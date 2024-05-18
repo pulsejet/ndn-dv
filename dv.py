@@ -12,6 +12,7 @@ class DV(Application):
 
         # Make DV configuration
         config = {
+            'sync': '/dv/sync',
             'name': node.name,
             'links': [],
         }

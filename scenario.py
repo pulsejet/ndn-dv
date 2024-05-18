@@ -21,13 +21,13 @@ if __name__ == '__main__':
 
     ndn.start()
 
-    # info('Starting NFD on nodes\n')
-    # nfds = AppManager(ndn, ndn.net.hosts, Nfd)
+    info('Starting NFD on nodes\n')
+    nfds = AppManager(ndn, ndn.net.hosts, Nfd)
+    time.sleep(2)
 
     info('Starting DV on nodes\n')
     dvs = AppManager(ndn, ndn.net.hosts, DV)
-
-    time.sleep(4)
+    time.sleep(20)
 
     # MiniNDNCLI(ndn.net)
 
