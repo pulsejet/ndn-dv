@@ -27,8 +27,8 @@ if __name__ == '__main__':
 
     info('Starting DV on nodes\n')
     dvs = AppManager(ndn, ndn.net.hosts, DV)
-    time.sleep(20)
+    # time.sleep(20)
 
-    # MiniNDNCLI(ndn.net)
+    MiniNDNCLI(ndn.net)
 
     ndn.stop()

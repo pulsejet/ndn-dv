@@ -13,6 +13,7 @@ class DV(Application):
         # Make DV configuration
         config = {
             'sync': '/dv/sync',
+            'unix': f'/run/nfd/{node.name}.sock',
             'name': node.name,
             'links': [],
         }

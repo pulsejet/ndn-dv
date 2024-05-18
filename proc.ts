@@ -44,3 +44,15 @@ export async function setStrategy(prefix: string, strategy: string) {
         throw new Error(`Failed to set strategy for ${prefix}: ${res.stderr}`);
     }
 }
+
+export async function addRoute(prefix: string, faceid: number) {
+    const res = await exec('nfdc', [
+        'route', 'add',
+        'prefix', prefix,
+        'nexthop', faceid.toString(),
+    ]);
+
+    if (res.status !== 0) {
+        throw new Error(`Failed to add route to ${prefix}: ${res.stderr}`);
+    }
+}
