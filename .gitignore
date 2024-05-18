@@ -1,0 +1,5 @@
+minindn
+node_modules/
+dist/
+tmp/
+__pycache__/
