@@ -3,6 +3,7 @@ import { Config, IAdvertisement, ILink, IRibEntry } from "./typings.mjs";
 
 import * as proc from './proc.js';
 import { consume, produce } from "@ndn/endpoint";
+import deepEqual from "deep-equal";
 
 export class DV {
     private advertisements: {
@@ -44,14 +45,13 @@ export class DV {
             }
         }
 
-        // Compute RIB
-        await this.computeRib();
-
         // Register own advertisement prefix
         produce(`${this.config.sync}/${this.config.name}`, this.onAdvertisementInterest.bind(this));
 
         // Set up periodic fetch
         let fetchLock = false;
+
+        // Periodic fetch routine
         setInterval(async () => {
             if (fetchLock) {
                 console.warn('Fetch routine is still running, skipping this interval');
@@ -67,6 +67,9 @@ export class DV {
                 fetchLock = false;
             }
         }, 5000);
+
+        // Initial RIB computation
+        this.computeRib();
     }
 
     getMyAdvertisement() {
@@ -90,33 +93,71 @@ export class DV {
         return adv;
     }
 
+    async advertise(interest: Interest) {
+        const advertisement = this.getMyAdvertisement();
+        const content = new TextEncoder().encode(JSON.stringify(advertisement));
+        return new Data(interest.name, content, Data.FreshnessPeriod(1));
+    }
+
+    async ackUpdate(interest: Interest) {
+        const sender = interest.name.at(-2).value;
+        const senderName = new TextDecoder().decode(sender);
+        console.log('Received update notification from neighbor: ', senderName);
+
+        const link = this.config.links.find(link => link.other_name === senderName);
+        if (link) {
+            this.fetchAdvertisement(link);
+        } else {
+            console.warn(`Received update notification from unknown neighbor ${senderName}`);
+        }
+
+        return new Data(interest.name, Data.FreshnessPeriod(1));
+    }
+
     async onAdvertisementInterest(interest: Interest) {
-        const adv = this.getMyAdvertisement();
-        const content = new TextEncoder().encode(JSON.stringify(adv));
-        return new Data(interest.name, content, Data.FreshnessPeriod(1000));
+        const msgType = interest.name.at(-1).value;
+        const msgTypeStr = new TextDecoder().decode(msgType);
+
+        switch (msgTypeStr) {
+            case 'ADV':
+                return this.advertise(interest);
+            case 'UPD':
+                return this.ackUpdate(interest);
+            default:
+                console.warn(`Received unknown message type: ${msgTypeStr}`);
+        }
     }
 
     async fetchAllAdvertisements() {
-        for (const link of this.config.links) {
-            await this.fetchAdvertisement(link);
-        }
-
-        await this.computeRib();
+        await Promise.allSettled(this.config.links.map(link => this.fetchAdvertisement(link)));
     }
 
     async fetchAdvertisement(link: ILink) {
         try {
-            const interest = new Interest(`${this.config.sync}/${link.other_name}`, Interest.MustBeFresh);
+            const interest = new Interest(`${this.config.sync}/${link.other_name}/ADV`, Interest.MustBeFresh);
             const data = await consume(interest);
-
             const json = new TextDecoder().decode(data.content);
+
+            const old = link.advert;
             link.advert = JSON.parse(json);
+
+            if (!deepEqual(old, link.advert)) {
+                this.computeRib();
+            }
         } catch (e) {
             console.error(`Failed to fetch advertisement from ${link.other_name}: ${e}`);
         }
     }
 
-    async computeRib() {
+    async notifyChange() {
+        await Promise.allSettled(this.config.links.map(link => (async () => {
+            const interest = new Interest(`${this.config.sync}/${link.other_name}/${this.config.name}/UPD`, Interest.MustBeFresh);
+            await consume(interest);
+        })()));
+    }
+
+    computeRib() {
+        const oldRib = this.rib;
         this.rib = [];
 
         // Add own prefixes
@@ -134,10 +175,7 @@ export class DV {
 
             for (const entry of link.advert.rib) {
                 // poison reverse
-                if (link.advert.nexthops[entry.nexthop] === this.config.name) {
-                    console.log(`Poison reverse for ${entry.name}`);
-                    continue;
-                }
+                if (link.advert.nexthops[entry.nexthop] === this.config.name) continue;
 
                 this.rib.push({
                     name: new Name(entry.name),
@@ -147,6 +185,9 @@ export class DV {
             }
         }
 
-        console.log('Computed RIB:', this.getMyAdvertisement().rib);
+        if (!deepEqual(oldRib, this.rib)) {
+            console.log('New computed RIB:', this.getMyAdvertisement().rib);
+            this.notifyChange(); // no await
+        }
     }
 }

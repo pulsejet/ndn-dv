@@ -11,9 +11,11 @@
     "@ndn/packet": "https://ndnts-nightly.ndn.today/packet.tgz",
     "@ndn/sync": "https://ndnts-nightly.ndn.today/sync.tgz",
     "@ndn/tlv": "https://ndnts-nightly.ndn.today/tlv.tgz",
-    "@ndn/util": "https://ndnts-nightly.ndn.today/util.tgz"
+    "@ndn/util": "https://ndnts-nightly.ndn.today/util.tgz",
+    "deep-equal": "^2.2.3"
   },
   "devDependencies": {
+    "@types/deep-equal": "^1.0.4",
     "@types/node": "^20.12.12",
     "typescript": "^5.4.5"
   }
