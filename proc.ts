@@ -45,14 +45,27 @@ export async function setStrategy(prefix: string, strategy: string) {
     }
 }
 
-export async function addRoute(prefix: string, faceid: number) {
+export async function addRoute(prefix: string, faceid: number, cost: number = 1) {
     const res = await exec('nfdc', [
         'route', 'add',
         'prefix', prefix,
-        'nexthop', faceid.toString(),
+        'nexthop', faceid.toFixed(0),
+        'cost', cost.toFixed(0),
     ]);
 
     if (res.status !== 0) {
-        throw new Error(`Failed to add route to ${prefix}: ${res.stderr}`);
+        throw new Error(`Failed to add route to ${prefix} from ${faceid}: ${res.stderr}`);
+    }
+}
+
+export async function removeRoute(prefix: string, nexthop: number) {
+    const res = await exec('nfdc', [
+        'route', 'remove',
+        'prefix', prefix,
+        'nexthop', nexthop.toFixed(0),
+    ]);
+
+    if (res.status !== 0) {
+        throw new Error(`Failed to remove route to ${prefix}: ${res.stderr}`);
     }
 }

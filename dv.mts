@@ -13,6 +13,10 @@ export class DV {
     private rib: Record<string, IRibEntry> = {};
     private ribUpdateTimer: NodeJS.Timeout | null = null;
 
+    private fib: Record<string, IRibEntry> = {};
+    private fibUpdateQueue = new Map<string, IRibEntry>();
+    private fibUpdateTimer: NodeJS.Timeout | null = null;
+
     constructor(private config: Config) {
         this.setup();
     }
@@ -21,8 +25,6 @@ export class DV {
         // Register own prefixes
         this.advertisements.push({
             name: new Name(`/${this.config.name}`),
-        }, {
-            name: new Name(`/${this.config.name}-1`),
         });
 
         // Process all neighbor links
@@ -74,6 +76,9 @@ export class DV {
 
         // Initial RIB computation
         this.scheduleRibUpdate();
+
+        // Initial FIB scheduler
+        this.processFibUpdate();
     }
 
     getMyAdvertisement() {
@@ -169,11 +174,16 @@ export class DV {
         this.ribUpdateTimer = setTimeout(() => {
             this.ribUpdateTimer = null;
 
+            const oldRib = this.rib;
             const newRib = this.computeNewRib();
-            if (!deepEqual(this.rib, newRib)) {
+
+            if (!deepEqual(oldRib, newRib)) {
                 this.rib = newRib;
                 this.notifyChange();
-                console.log('New computed RIB:', this.getMyAdvertisement());
+                this.updateFib(oldRib, newRib);
+
+                // Log new RIB
+                console.log('Newly computed RIB:', this.getMyAdvertisement());
             }
         }, Math.random() * 100);
     }
@@ -213,5 +223,60 @@ export class DV {
         }
 
         return newRib;
+    }
+
+    updateFib(oldRib: Record<string, IRibEntry>, newRib: Record<string, IRibEntry>) {
+        for (const [prefix, newEntry] of Object.entries(newRib)) {
+            if (!deepEqual(oldRib[prefix] ?? {}, newEntry)) {
+                this.fibUpdateQueue.set(prefix, newEntry);
+            }
+        }
+
+        for (const [prefix, oldEntry] of Object.entries(oldRib)) {
+            if (!newRib[prefix]) {
+                this.fibUpdateQueue.set(prefix, { cost: Number.MAX_SAFE_INTEGER, nexthop: 0 });
+            }
+        }
+    }
+
+    async processFibUpdate() {
+        if (this.fibUpdateTimer) {
+            console.warn('[BUG] processFibUpdate called while timer is active');
+            return;
+        }
+
+        try {
+            while (this.fibUpdateQueue.size > 0) {
+                const val = this.fibUpdateQueue.entries().next().value;
+                if (!val) break;
+
+                const [prefix, entry] = val as [string, IRibEntry];
+                this.fibUpdateQueue.delete(prefix);
+
+                const oldFibEntry = this.fib[prefix];
+                if (oldFibEntry) {
+                    await proc.removeRoute(prefix, oldFibEntry.nexthop);
+                    delete this.fib[prefix];
+                }
+
+                if (entry.cost >= 16) {
+                    console.log(`Removed route to ${prefix} via faceid ${oldFibEntry?.nexthop}`);
+                } else {
+                    if (entry.nexthop > 0) {
+                        await proc.addRoute(prefix, entry.nexthop, entry.cost);
+                    }
+
+                    this.fib[prefix] = entry;
+                    console.log(`Added route to ${prefix} via faceid ${entry.nexthop}`);
+                }
+            }
+        } catch (e) {
+            console.error(`Error during FIB update: ${e}`);
+        }
+
+        this.fibUpdateTimer = setTimeout(() => {
+            this.fibUpdateTimer = null;
+            this.processFibUpdate();
+        }, 500);
     }
 }
