@@ -20,9 +20,8 @@ class DV(Application):
 
         # Getting all link pairs
         for intf in node.intfList():
-            ip1 = intf.IP()
-            ip2 = intf.link.intf2.IP() if intf.link.intf1 == intf else intf.link.intf1.IP()
-            config['links'].append({ 'from': ip1, 'to': ip2 })
+            other_intf = intf.link.intf2 if intf.link.intf1 == intf else intf.link.intf1
+            config['links'].append({ 'other_ip': other_intf.IP(), 'other_name': other_intf.node.name })
 
         self.config = f'{self.homeDir}/cfg-{node.name}.json'
         with open(self.config, 'w') as f:

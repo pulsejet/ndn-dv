@@ -1,9 +1,10 @@
 import { promises as fs } from 'fs';
 import * as proc from './proc.js';
-import { consume, produce } from '@ndn/endpoint';
+import { produce } from '@ndn/endpoint';
 import { Config } from './typings.js';
 import { enableNfdPrefixReg } from '@ndn/nfdmgmt';
 import { UnixTransport } from '@ndn/node-transport';
+import { onAdvertisementInterest } from './dv.mjs';
 
 export default async function main() {
     // Read config file
@@ -14,40 +15,27 @@ export default async function main() {
     const face = await UnixTransport.createFace({}, config.unix);
     enableNfdPrefixReg(face);
 
-    // Multicast sync
-    await proc.setStrategy(config.sync, '/localhost/nfd/strategy/multicast');
-
-    // Create all neighbor faces
+    // Process all neighbor links
     for (const link of config.links) {
+        // Create face to neighbor
         try {
-            link.faceid = await proc.createFace(link.to);
-            console.log(`Created face to ${link.to} with faceid ${link.faceid}`);
+            link.faceid = await proc.createFace(link.other_ip);
+            console.log(`Created face to ${link.other_ip} with faceid ${link.faceid}`);
         } catch (e) {
-            console.error(`Failed to create face to ${link.to}: ${e}`);
+            console.error(`Failed to create face to ${link.other_ip}: ${e}`);
             continue;
         }
 
+        // Create static routes for neighbor advertisement prefixes
+        const other_route = `${config.sync}/${link.other_name}`;
         try {
-            await proc.addRoute(config.sync, link.faceid);
-            console.log(`Added route to ${config.sync} via faceid ${link.faceid}`);
+            await proc.addRoute(other_route, link.faceid);
+            console.log(`Added route to ${other_route} via faceid ${link.faceid}`);
         } catch (e) {
-            console.error(`Failed to add route to ${config.sync}: ${e}`);
+            console.error(`Failed to add route to ${other_route}: ${e}`);
         }
     }
 
-    const p = produce(config.sync, async (interest) => {
-        console.log(`Received interest ${interest.name}`);
-        return undefined;
-    });
-
-    // sleep 2s
-    await new Promise((r) => setTimeout(r, 2000));
-
-    try {
-        await consume(config.sync + '/test/' + config.name);
-    } catch (e) {
-        console.error(`Failed to send interest: ${e}`);
-    }
-
-    await new Promise((r) => setTimeout(r, 80000));
+    // Register own advertisement prefix
+    produce(`${config.sync}/${config.name}`, onAdvertisementInterest);
 }

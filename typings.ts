@@ -3,8 +3,8 @@ export interface Config {
     name: string;
     unix: string;
     links: {
-        from: string;
-        to: string;
+        other_ip: string;
+        other_name: string;
         faceid?: number;
     }[];
 }
