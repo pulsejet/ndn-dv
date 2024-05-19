@@ -157,13 +157,13 @@ export class DV {
     }
 
     computeRib() {
-        const oldRib = this.rib;
-        this.rib = [];
+        const ribMap = new Map<string, IRibEntry<string>>();
 
         // Add own prefixes
         for (const adv of this.advertisements) {
-            this.rib.push({
-                name: adv.name,
+            const pfx = adv.name.toString();
+            ribMap.set(pfx, {
+                name: pfx,
                 cost: 0,
                 nexthop: 0,
             });
@@ -177,16 +177,37 @@ export class DV {
                 // poison reverse
                 if (link.advert.nexthops[entry.nexthop] === this.config.name) continue;
 
-                this.rib.push({
-                    name: new Name(entry.name),
-                    cost: entry.cost + 1,
+                // our cost to destination through this neighbor
+                const cost = entry.cost + 1;
+
+                // check if we have a better route
+                if ((ribMap.get(entry.name)?.cost ?? Number.MAX_SAFE_INTEGER) <= cost) {
+                    continue;
+                }
+
+                ribMap.set(entry.name, {
+                    name: entry.name,
+                    cost: cost,
                     nexthop: link.faceid!,
                 });
             }
         }
 
-        if (!deepEqual(oldRib, this.rib)) {
-            console.log('New computed RIB:', this.getMyAdvertisement().rib);
+        const newRib: IRibEntry<Name>[] = [];
+        for (const [name, entry] of ribMap) {
+            newRib.push({
+                name: new Name(name),
+                cost: entry.cost,
+                nexthop: entry.nexthop,
+            });
+        }
+
+        // sort by name
+        newRib.sort((a, b) => a.name.compare(b.name));
+
+        if (!deepEqual(this.rib, newRib)) {
+            this.rib = newRib;
+            console.log('New computed RIB:', this.getMyAdvertisement());
             this.notifyChange(); // no await
         }
     }
