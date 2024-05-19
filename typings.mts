@@ -13,6 +13,7 @@ export interface ILink {
 
     faceid?: number;
     advert?: IAdvertisement;
+    nerrors: number;
 }
 
 export interface IRibEntry {

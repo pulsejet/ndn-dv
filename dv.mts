@@ -44,6 +44,9 @@ export class DV {
             } catch (e) {
                 console.error(`Failed to add route to ${other_route}: ${e}`);
             }
+
+            // Other initializations
+            link.nerrors ??= 0;
         }
 
         // Register own advertisement prefix
@@ -67,7 +70,7 @@ export class DV {
             } finally {
                 fetchLock = false;
             }
-        }, 5000);
+        }, 2000);
 
         // Initial RIB computation
         this.scheduleRibUpdate();
@@ -126,18 +129,30 @@ export class DV {
 
     async fetchAdvertisement(link: ILink) {
         try {
-            const interest = new Interest(`${this.config.sync}/${link.other_name}/ADV`, Interest.MustBeFresh);
+            const interest = new Interest(
+                `${this.config.sync}/${link.other_name}/ADV`,
+                Interest.MustBeFresh,
+                Interest.Lifetime(1000));
             const data = await consume(interest);
             const json = new TextDecoder().decode(data.content);
+            const newAdvert = JSON.parse(json);
 
-            const old = link.advert;
-            link.advert = JSON.parse(json);
-
-            if (!deepEqual(old, link.advert)) {
+            link.nerrors = 0;
+            if (!deepEqual(newAdvert, link.advert)) {
+                link.advert = newAdvert;
                 this.scheduleRibUpdate();
             }
         } catch (e) {
-            console.error(`Failed to fetch advertisement from ${link.other_name}: ${e}`);
+            if (link.nerrors < 3) {
+                console.error(`Failed to fetch advertisement from ${link.other_name}: ${e}`);
+            }
+
+            link.nerrors++;
+            if (link.nerrors >= 3 && link.advert) {
+                console.error(`Too many errors, removing advertisements from ${link.other_name}. Suppressing further error logs.`);
+                link.advert = undefined;
+                this.scheduleRibUpdate();
+            }
         }
     }
 
@@ -183,6 +198,9 @@ export class DV {
                 // our cost to destination through this neighbor
                 const cost = entry.cost + 1;
                 const nexthop = link.faceid!;
+
+                // count to infinity
+                if (cost >= 16) continue;
 
                 // check if we have a better route
                 if ((newRib[name]?.cost ?? Number.MAX_SAFE_INTEGER) <= cost) {
