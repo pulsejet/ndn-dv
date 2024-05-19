@@ -1,5 +1,5 @@
 import { promises as fs } from 'fs';
-import { Config } from './typings.js';
+import { Config } from './typings.mjs';
 import { enableNfdPrefixReg } from '@ndn/nfdmgmt';
 import { UnixTransport } from '@ndn/node-transport';
 import { DV } from './dv.mjs';
