@@ -10,7 +10,8 @@ export class DV {
         name: Name;
     }[] = [];
 
-    private rib: IRibEntry<Name>[] = [];
+    private rib: Record<string, IRibEntry> = {};
+    private ribUpdateTimer: NodeJS.Timeout | null = null;
 
     constructor(private config: Config) {
         this.setup();
@@ -69,25 +70,17 @@ export class DV {
         }, 5000);
 
         // Initial RIB computation
-        this.computeRib();
+        this.scheduleRibUpdate();
     }
 
     getMyAdvertisement() {
         const adv: IAdvertisement = {
             nexthops: {},
-            rib: [],
+            rib: this.rib,
         };
 
         for (const link of this.config.links) {
             adv.nexthops[link.faceid!] = link.other_name;
-        }
-
-        for (const entry of this.rib) {
-            adv.rib.push({
-                name: entry.name.toString(),
-                cost: entry.cost,
-                nexthop: entry.nexthop,
-            });
         }
 
         return adv;
@@ -102,7 +95,6 @@ export class DV {
     async ackUpdate(interest: Interest) {
         const sender = interest.name.at(-2).value;
         const senderName = new TextDecoder().decode(sender);
-        console.log('Received update notification from neighbor: ', senderName);
 
         const link = this.config.links.find(link => link.other_name === senderName);
         if (link) {
@@ -142,7 +134,7 @@ export class DV {
             link.advert = JSON.parse(json);
 
             if (!deepEqual(old, link.advert)) {
-                this.computeRib();
+                this.scheduleRibUpdate();
             }
         } catch (e) {
             console.error(`Failed to fetch advertisement from ${link.other_name}: ${e}`);
@@ -156,59 +148,52 @@ export class DV {
         })()));
     }
 
-    computeRib() {
-        const ribMap = new Map<string, IRibEntry<string>>();
+    scheduleRibUpdate() {
+        if (this.ribUpdateTimer) return;
+
+        this.ribUpdateTimer = setTimeout(() => {
+            this.ribUpdateTimer = null;
+
+            const newRib = this.computeNewRib();
+            if (!deepEqual(this.rib, newRib)) {
+                this.rib = newRib;
+                this.notifyChange();
+                console.log('New computed RIB:', this.getMyAdvertisement());
+            }
+        }, Math.random() * 100);
+    }
+
+    computeNewRib() {
+        const newRib: Record<string, IRibEntry> = {};
 
         // Add own prefixes
         for (const adv of this.advertisements) {
             const pfx = adv.name.toString();
-            ribMap.set(pfx, {
-                name: pfx,
-                cost: 0,
-                nexthop: 0,
-            });
+            newRib[pfx] = { cost: 0, nexthop: 0 };
         }
 
         // Add neighbor prefixes
         for (const link of this.config.links) {
             if (!link.advert) continue;
 
-            for (const entry of link.advert.rib) {
+            for (const [name, entry] of Object.entries(link.advert.rib)) {
                 // poison reverse
                 if (link.advert.nexthops[entry.nexthop] === this.config.name) continue;
 
                 // our cost to destination through this neighbor
                 const cost = entry.cost + 1;
+                const nexthop = link.faceid!;
 
                 // check if we have a better route
-                if ((ribMap.get(entry.name)?.cost ?? Number.MAX_SAFE_INTEGER) <= cost) {
+                if ((newRib[name]?.cost ?? Number.MAX_SAFE_INTEGER) <= cost) {
                     continue;
                 }
 
-                ribMap.set(entry.name, {
-                    name: entry.name,
-                    cost: cost,
-                    nexthop: link.faceid!,
-                });
+                // best route
+                newRib[name] = { cost, nexthop };
             }
         }
 
-        const newRib: IRibEntry<Name>[] = [];
-        for (const [name, entry] of ribMap) {
-            newRib.push({
-                name: new Name(name),
-                cost: entry.cost,
-                nexthop: entry.nexthop,
-            });
-        }
-
-        // sort by name
-        newRib.sort((a, b) => a.name.compare(b.name));
-
-        if (!deepEqual(this.rib, newRib)) {
-            this.rib = newRib;
-            console.log('New computed RIB:', this.getMyAdvertisement());
-            this.notifyChange(); // no await
-        }
+        return newRib;
     }
 }

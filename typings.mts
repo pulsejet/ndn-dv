@@ -15,13 +15,12 @@ export interface ILink {
     advert?: IAdvertisement;
 }
 
-export interface IRibEntry<NameType> {
-    name: NameType;
+export interface IRibEntry {
     cost: number;
     nexthop: number;
 };
 
 export interface IAdvertisement {
     nexthops: Record<number, string>;
-    rib: IRibEntry<string>[];
+    rib: Record<string, IRibEntry>;
 }
