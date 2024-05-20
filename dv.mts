@@ -84,11 +84,23 @@ export class DV {
     getMyAdvertisement() {
         const adv: IAdvertisement = {
             nexthops: {},
-            rib: this.rib,
+            rib: {},
         };
 
         for (const link of this.config.links) {
             adv.nexthops[link.faceid!] = link.other_name;
+        }
+
+        for (const [prefix, entry] of Object.entries(this.rib)) {
+            const entries = Object.entries(entry);
+            if (entries.length === 0) continue;
+            entries.sort((a, b) => a[1].cost - b[1].cost);
+
+            adv.rib[prefix] = {
+                nexthop: Number(entries[0][0]),
+                cost: entries[0][1].cost,
+                other: entries[1]?.[1].cost ?? null,
+            };
         }
 
         return adv;
@@ -194,7 +206,7 @@ export class DV {
         // Add own prefixes
         for (const adv of this.advertisements) {
             const pfx = adv.name.toString();
-            newRib[pfx] = { cost: 0, nexthop: 0 };
+            newRib[pfx] = { 0: { cost: 0 } };
         }
 
         // Add neighbor prefixes
@@ -202,23 +214,27 @@ export class DV {
             if (!link.advert) continue;
 
             for (const [name, entry] of Object.entries(link.advert.rib)) {
-                // poison reverse
-                if (link.advert.nexthops[entry.nexthop] === this.config.name) continue;
-
                 // our cost to destination through this neighbor
-                const cost = entry.cost + 1;
+                let cost = entry.cost + 1;
                 const nexthop = link.faceid!;
+
+                // poison reverse
+                if (link.advert.nexthops[Number(entry.nexthop)] === this.config.name) {
+                    // unless there are others, and this is not our own prefix
+                    if (!entry.other || newRib[name]?.[0]) {
+                        continue;
+                    }
+
+                    // use other cost
+                    cost = entry.other! + 1;
+                }
 
                 // count to infinity
                 if (cost >= 16) continue;
 
-                // check if we have a better route
-                if ((newRib[name]?.cost ?? Number.MAX_SAFE_INTEGER) <= cost) {
-                    continue;
-                }
-
                 // best route
-                newRib[name] = { cost, nexthop };
+                newRib[name] ??= {};
+                newRib[name][nexthop] = { cost };
             }
         }
 
@@ -234,7 +250,7 @@ export class DV {
 
         for (const [prefix, oldEntry] of Object.entries(oldRib)) {
             if (!newRib[prefix]) {
-                this.fibUpdateQueue.set(prefix, { cost: Number.MAX_SAFE_INTEGER, nexthop: 0 });
+                this.fibUpdateQueue.set(prefix, { 0: { cost: Number.MAX_SAFE_INTEGER } });
             }
         }
     }
@@ -255,19 +271,22 @@ export class DV {
 
                 const oldFibEntry = this.fib[prefix];
                 if (oldFibEntry) {
-                    await proc.removeRoute(prefix, oldFibEntry.nexthop);
+                    for (const [nexthop, params] of Object.entries(oldFibEntry)) {
+                        await proc.removeRoute(prefix, Number(nexthop));
+                        console.log(`Removed route to ${prefix} via faceid ${nexthop}`);
+                    }
                     delete this.fib[prefix];
                 }
 
-                if (entry.cost >= 16) {
-                    console.log(`Removed route to ${prefix} via faceid ${oldFibEntry?.nexthop}`);
-                } else {
-                    if (entry.nexthop > 0) {
-                        await proc.addRoute(prefix, entry.nexthop, entry.cost);
-                    }
+                for (const [nexthop, params] of Object.entries(entry)) {
+                    if (params.cost >= 16) continue;
+                    if (Number(nexthop) <= 0) continue;
 
-                    this.fib[prefix] = entry;
-                    console.log(`Added route to ${prefix} via faceid ${entry.nexthop}`);
+                    await proc.addRoute(prefix, Number(nexthop), params.cost);
+                    console.log(`Added route to ${prefix} via faceid ${nexthop}`);
+
+                    this.fib[prefix] ??= {};
+                    this.fib[prefix][Number(nexthop)] = params;
                 }
             }
         } catch (e) {

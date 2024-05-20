@@ -1,5 +1,3 @@
-import { Name } from "@ndn/packet";
-
 export interface Config {
     sync: string;
     name: string;
@@ -16,12 +14,15 @@ export interface ILink {
     nerrors: number;
 }
 
-export interface IRibEntry {
+export type IRibEntry = Record<number, {
     cost: number;
-    nexthop: number;
-};
+}>;
 
 export interface IAdvertisement {
     nexthops: Record<number, string>;
-    rib: Record<string, IRibEntry>;
+    rib: Record<string, {
+        nexthop: number;
+        cost: number;
+        other: number | null;
+    }>;
 }
