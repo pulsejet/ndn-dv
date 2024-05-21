@@ -269,24 +269,40 @@ export class DV {
                 const [prefix, entry] = val as [string, IRibEntry];
                 this.fibUpdateQueue.delete(prefix);
 
+                // changes to the fib
+                const diff = structuredClone(entry);
+
+                // remove entries that have changed
                 const oldFibEntry = this.fib[prefix];
                 if (oldFibEntry) {
                     for (const [nexthop, params] of Object.entries(oldFibEntry)) {
-                        await proc.removeRoute(prefix, Number(nexthop));
+                        const nh = Number(nexthop);
+
+                        // entry is the same, just skip
+                        if (deepEqual(params, diff[nh])) {
+                            delete diff[Number(nexthop)];
+                            continue;
+                        }
+
+                        // remove this route, may be added later
+                        await proc.removeRoute(prefix, nh);
                         console.log(`Removed route to ${prefix} via faceid ${nexthop}`);
+                        delete oldFibEntry[nh];
                     }
-                    delete this.fib[prefix];
                 }
 
-                for (const [nexthop, params] of Object.entries(entry)) {
-                    if (params.cost >= 16) continue;
-                    if (Number(nexthop) <= 0) continue;
+                // add new entries
+                for (const [nexthop, params] of Object.entries(diff)) {
+                    const nh = Number(nexthop);
 
-                    await proc.addRoute(prefix, Number(nexthop), params.cost);
+                    if (params.cost >= 16) continue;
+                    if (nh <= 0) continue;
+
+                    await proc.addRoute(prefix, nh, params.cost);
                     console.log(`Added route to ${prefix} via faceid ${nexthop}`);
 
                     this.fib[prefix] ??= {};
-                    this.fib[prefix][Number(nexthop)] = params;
+                    this.fib[prefix][nh] = params;
                 }
             }
         } catch (e) {
