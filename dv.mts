@@ -280,7 +280,7 @@ export class DV {
 
                         // entry is the same, just skip
                         if (deepEqual(params, diff[nh])) {
-                            delete diff[Number(nexthop)];
+                            delete diff[nh];
                             continue;
                         }
 
