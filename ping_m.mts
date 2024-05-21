@@ -32,8 +32,8 @@ export default async function main() {
         try {
             await consume(interest, {
                 retx: {
-                    limit: 5,
-                    interval: 200,
+                    limit: 3,
+                    interval: 400,
                 }
             });
             //console.log("RECV" + name.toString());
