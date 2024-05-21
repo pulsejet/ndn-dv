@@ -10,6 +10,7 @@ from minindn.apps.nfd import Nfd
 from minindn_play.server import PlayServer
 
 from dv import DV
+from ping_server import PingServer
 
 TMP_DIR = '/work/tmp'
 
@@ -26,6 +27,9 @@ if __name__ == '__main__':
     info('Starting NFD on nodes\n')
     nfds = AppManager(ndn, ndn.net.hosts, Nfd)
     time.sleep(1)
+
+    info('Starting PingServer on nodes\n')
+    ping_servers = AppManager(ndn, ndn.net.hosts, PingServer)
 
     info('Starting DV on nodes\n')
     dvs = AppManager(ndn, ndn.net.hosts, DV)
