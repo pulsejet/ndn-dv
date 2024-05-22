@@ -5,6 +5,8 @@ import * as proc from './proc.js';
 import { consume, produce } from "@ndn/endpoint";
 import deepEqual from "deep-equal";
 
+const NUM_FAILS = 3;
+
 export class DV {
     private advertisements: {
         name: Name;
@@ -160,12 +162,12 @@ export class DV {
                 this.scheduleRibUpdate();
             }
         } catch (e) {
-            if (link.nerrors < 3) {
+            if (link.nerrors < NUM_FAILS) {
                 console.error(`Failed to fetch advertisement from ${link.other_name}: ${e}`);
             }
 
             link.nerrors++;
-            if (link.nerrors >= 3 && link.advert) {
+            if (link.nerrors >= NUM_FAILS && link.advert) {
                 console.error(`Too many errors, removing advertisements from ${link.other_name}. Suppressing further error logs.`);
                 link.advert = undefined;
                 this.scheduleRibUpdate();
