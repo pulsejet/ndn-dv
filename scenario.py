@@ -7,6 +7,7 @@ from minindn.minindn import Minindn
 from minindn.util import MiniNDNCLI
 from minindn.apps.app_manager import AppManager
 from minindn.apps.nfd import Nfd
+from minindn.apps.nlsr import Nlsr
 
 from mininet.link import Link
 from mininet.node import Node
@@ -22,8 +23,14 @@ SEED = 0
 NUM_SRC = 10
 NUM_TGT = 6
 
-SCEN_MAX_SEC = 600
+SCEN_MAX_SEC = 200
 SCEN_INTERVAL = 1
+
+MTTF = 1000
+MTTR = 100
+
+PROTO = 'dv'
+DEBUG = False
 
 def chooseRandN(n, lst, seed):
     random.seed(seed)
@@ -52,8 +59,10 @@ def getStats(nodes: list[Node]):
 
 def printStats(nodes: list[Node]):
     fail, success = getStats(nodes)
-    print('TOTAL:', fail + success)
-    print('RATE:', success / (fail + success))
+    total = fail + success
+    fail_pc = round((fail * 100) / (fail + success), 2)
+    print(f'TOTAL: {total}\t'
+          f'LOSS: {fail_pc}%')
 
 if __name__ == '__main__':
     setLogLevel('info')
@@ -72,14 +81,24 @@ if __name__ == '__main__':
     info('Starting PingServer on nodes\n')
     ping_servers = AppManager(ndn, ndn.net.hosts, PingServer)
 
-    info('Starting DV on nodes\n')
-    dvs = AppManager(ndn, ndn.net.hosts, DV)
+    if PROTO == 'dv':
+        info('Starting DV on nodes\n')
+        dvs = AppManager(ndn, ndn.net.hosts, DV)
+    elif PROTO == 'ls':
+        info('Starting NLSR on nodes\n')
+        nlsrs = AppManager(ndn, ndn.net.hosts, Nlsr)
+    else:
+        raise ValueError('Invalid PROTO')
 
-    # MiniNDNCLI(ndn.net)
-    # PlayServer(ndn.net).start()
+    if DEBUG:
+        PlayServer(ndn.net).start()
+        ndn.stop()
+        exit(0)
 
-    time.sleep(10)
+    # more time for nlsr to converge
+    time.sleep(10 if PROTO == 'dv' else 30)
 
+    # calculate scenario variables
     info('Starting Ping on nodes\n')
     targets = chooseRandN(NUM_TGT, ndn.net.hosts, SEED)
     sources = chooseRandN(NUM_SRC, ndn.net.hosts, SEED+1)
@@ -97,17 +116,17 @@ if __name__ == '__main__':
         links: list[Link] = ndn.net.links
         for link in links:
             if link.intf1.params.get('loss', 0.0) > 99.0:
-                if random.random() < 0.01:
+                if random.random() < 1 / MTTR:
                     setLinkParams(link, loss=0.0001)
                     print('Link', link, 'repaired')
             else:
-                if random.random() < 0.001:
+                if random.random() < 1 / MTTF:
                     setLinkParams(link, loss=100.0)
                     print('Link', link, 'broken')
         time.sleep(SCEN_INTERVAL)
 
         if (i % 10) == 0:
-            print('TIME:', i * SCEN_INTERVAL)
+            print('TIME:', i * SCEN_INTERVAL, end='\t')
             printStats(sources)
 
     # scenario end

@@ -36,10 +36,8 @@ export default async function main() {
                     interval: 400,
                 }
             });
-            //console.log("RECV" + name.toString());
             process.stdout.write(".");
         } catch (e) {
-            // console.log("FAIL:" + name.toString());
             process.stdout.write("x");
         } finally {
             PC++;
