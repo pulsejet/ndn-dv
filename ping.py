@@ -14,10 +14,10 @@ class PingServer(Application):
 class Ping(Application):
     prefix: str
 
-    def __init__(self, node, prefix):
+    def __init__(self, node, pfx, logname):
         Application.__init__(self, node)
-        self.logFile = 'ping.log'
-        self.prefix = prefix
+        self.logFile = f'ping-{logname}.log'
+        self.prefix = pfx
 
     def start(self):
         Application.start(self, ['node', '/work/dist/ping.js', self.prefix], logfile=self.logFile)

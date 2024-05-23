@@ -5,7 +5,7 @@ import * as proc from './proc.js';
 import { consume, produce } from "@ndn/endpoint";
 import deepEqual from "deep-equal";
 
-const NUM_FAILS = 3;
+const NUM_FAILS = 5;
 
 export class DV {
     private advertisements: {

@@ -27,7 +27,7 @@ export default async function main() {
     setInterval(async () => {
         i++;
         const name = `${pfx}/${i}`;
-        const interest = new Interest(name, Interest.Lifetime(1200));
+        const interest = new Interest(name, Interest.Lifetime(4000));
 
         try {
             await consume(interest, {

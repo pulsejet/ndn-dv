@@ -1,5 +1,7 @@
 import random
 import time
+import json
+import os
 
 from mininet.log import setLogLevel, info
 
@@ -20,16 +22,16 @@ from ping import PingServer, Ping
 TMP_DIR = '/work/tmp'
 SEED = 0
 
-NUM_SRC = 10
-NUM_TGT = 6
+NUM_PINGSS = 80
 
-SCEN_MAX_SEC = 200
+SCEN_MAX_SEC = 300
 SCEN_INTERVAL = 1
 
-MTTF = 1000
-MTTR = 100
-
+NAME_PFX = 'what'
+MTTF = 0
+MTTR = 0
 PROTO = 'dv'
+
 DEBUG = False
 
 def chooseRandN(n, lst, seed):
@@ -48,24 +50,34 @@ def setLinkParams(link: Link, **params):
 def getStats(nodes: list[Node]):
     fail, success = 0, 0
     for source in nodes:
-        with open(f'/tmp/minindn/{source.name}/log/ping.log', 'r') as f:
-            for line in f:
-                for char in line:
-                    if char == 'x':
-                        fail += 1
-                    elif char == '.':
-                        success += 1
-    return fail, success
+        # list files starting with ping-
+        folder = f'/tmp/minindn/{source.name}/log'
+        basenames = os.listdir(folder)
+        basenames = [f for f in basenames if f.startswith('ping-')]
 
-def printStats(nodes: list[Node]):
-    fail, success = getStats(nodes)
+        for basename in basenames:
+            filename = f'{folder}/{basename}'
+            with open(filename, 'r') as f:
+                for line in f:
+                    for char in line:
+                        if char == 'x':
+                            fail += 1
+                        elif char == '.':
+                            success += 1
     total = fail + success
     fail_pc = round((fail * 100) / (fail + success), 2)
+    return fail, success, total, fail_pc
+
+def printStats(nodes: list[Node]):
+    fail, success, total, fail_pc = getStats(nodes)
     print(f'TOTAL: {total}\t'
           f'LOSS: {fail_pc}%')
 
-if __name__ == '__main__':
+def start():
     setLogLevel('info')
+
+    if os.path.exists('/tmp/minindn'):
+        os.system('rm -rf /tmp/minindn')
 
     Minindn.cleanUp()
     Minindn.verifyDependencies()
@@ -96,20 +108,36 @@ if __name__ == '__main__':
         exit(0)
 
     # more time for router to converge
-    time.sleep(30)
+    info('Waiting for router to converge\n')
+    time.sleep(60)
 
     # calculate scenario variables
     info('Starting Ping on nodes\n')
-    targets = chooseRandN(NUM_TGT, ndn.net.hosts, SEED)
-    sources = chooseRandN(NUM_SRC, ndn.net.hosts, SEED+1)
-    print('Targets:', [target.name for target in targets])
-    print('Sources:', [source.name for source in sources])
+    all_hosts = list(ndn.net.hosts)
+    # targets = chooseRandN(NUM_TGT, ndn.net.hosts, SEED)
+    # sources = chooseRandN(NUM_SRC, ndn.net.hosts, SEED+1)
+    # print('Targets:', [target.name for target in targets])
+    # print('Sources:', [source.name for source in sources])
+
+    random.seed(SEED+2)
+    flows = set()
     pingss = []
-    for target in targets:
-        pingss.append(AppManager(ndn, sources, Ping, prefix=f'/{target.name}/ping'))
+    while len(pingss) < NUM_PINGSS:
+        source = random.choice(all_hosts)
+        target = random.choice(all_hosts)
+
+        if source == target:
+            continue
+
+        flow = f'{source.name}->{target.name}'
+        if flow in flows:
+            continue
+
+        print('Setting up flow:', flow)
+        pingss.append(AppManager(ndn, [source], Ping, pfx=f'/{target.name}/ping', logname=target.name))
 
     # scenario start
-    time.sleep(2)
+    time.sleep(5)
     random.seed(SEED+3)
 
     for i in range(SCEN_MAX_SEC // SCEN_INTERVAL):
@@ -127,9 +155,25 @@ if __name__ == '__main__':
 
         if (i % 10) == 0:
             print('TIME:', i * SCEN_INTERVAL, end='\t')
-            printStats(sources)
+            printStats(all_hosts)
 
     # scenario end
     ndn.stop()
 
-    printStats(sources)
+    printStats(all_hosts)
+
+    # save stats to results json file
+    fail, success, total, fail_pc = getStats(all_hosts)
+    with open(f'/work/results/{PROTO}_{NAME_PFX}_{MTTF}_{MTTR}.json', 'w') as f:
+        json.dump({'fail': fail, 'success': success, 'total': total, 'fail_pc': fail_pc}, f)
+
+if __name__ == '__main__':
+    MTTR = 120
+
+    for run in range(1, 4):
+        NAME_PFX = f'base_{run}'
+        SEED = run - 1
+
+        for mttf in [4000, 3000, 2000, 1500, 1000, 500, 300]:
+            MTTF = mttf
+            start()
