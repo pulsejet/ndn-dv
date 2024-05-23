@@ -95,8 +95,8 @@ if __name__ == '__main__':
         ndn.stop()
         exit(0)
 
-    # more time for nlsr to converge
-    time.sleep(10 if PROTO == 'dv' else 30)
+    # more time for router to converge
+    time.sleep(30)
 
     # calculate scenario variables
     info('Starting Ping on nodes\n')
