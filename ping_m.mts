@@ -33,7 +33,7 @@ export default async function main() {
             await consume(interest, {
                 retx: {
                     limit: 3,
-                    interval: 400,
+                    interval: 500,
                 }
             });
             process.stdout.write(".");
@@ -44,5 +44,5 @@ export default async function main() {
         }
 
         if (PC % NCCT === 0) process.stdout.write("\n");
-    }, 100);
+    }, 20);
 }
