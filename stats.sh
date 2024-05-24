@@ -1,11 +1,15 @@
 #!/bin/bash
 
-OUTPUTS=$(cat /tmp/minindn/**/log/ping.log)
+typ="dv_retx"
 
-FAIL=$(echo $OUTPUTS | tr -cd 'x' | wc -c)
-SUCCESS=$(echo $OUTPUTS | tr -cd '.' | wc -c)
-
-FRAC=$(echo "scale=2; $SUCCESS / ($SUCCESS + $FAIL)" | bc)
-
-echo -e "TOTAL: $((SUCCESS + FAIL))"
-echo -e "SUCCESS: $FRAC"
+echo "${typ} = ["
+for pfx in ${typ}_1 ${typ}_2 ${typ}_3; do
+    echo -n "["
+    for mttf in 4000 3000 2000 1500 1000 500 300; do
+        filename="results/${pfx}_${mttf}_120.json"
+        VAL=$(cat $filename | jq ".fail_pc")
+        echo -n "$VAL, "
+    done
+    echo "],"
+done
+echo "]"
