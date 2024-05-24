@@ -34,6 +34,8 @@ PROTO = 'dv'
 
 DEBUG = False
 
+DRY = True
+
 def chooseRandN(n, lst, seed):
     random.seed(seed)
     lst = list(lst)
@@ -52,6 +54,8 @@ def getStats(nodes: list[Node]):
     for source in nodes:
         # list files starting with ping-
         folder = f'/tmp/minindn/{source.name}/log'
+        if not os.path.exists(folder):
+            continue
         basenames = os.listdir(folder)
         basenames = [f for f in basenames if f.startswith('ping-')]
 
@@ -65,13 +69,29 @@ def getStats(nodes: list[Node]):
                         elif char == '.':
                             success += 1
     total = fail + success
-    fail_pc = round((fail * 100) / (fail + success), 2)
+    fail_pc = round((fail * 100) / ((fail + success) or 1), 2)
     return fail, success, total, fail_pc
 
 def printStats(nodes: list[Node]):
     fail, success, total, fail_pc = getStats(nodes)
     print(f'TOTAL: {total}\t'
           f'LOSS: {fail_pc}%')
+
+def flow_works(source: Node, target: Node, visited: set[str]) -> bool:
+    if source == target:
+        return True
+    visited.add(source.name)
+    for intf in source.intfList():
+        if intf.params.get('loss', 0.0) > 99.0:
+            continue
+        link = intf.link
+        if link.intf1.node.name not in visited:
+            if flow_works(link.intf1.node, target, visited):
+                return True
+        if link.intf2.node.name not in visited:
+            if flow_works(link.intf2.node, target, visited):
+                return True
+    return False
 
 def start():
     setLogLevel('info')
@@ -86,30 +106,31 @@ def start():
 
     ndn.start()
 
-    info('Starting NFD on nodes\n')
-    nfds = AppManager(ndn, ndn.net.hosts, Nfd)
-    time.sleep(10)
+    if not DRY:
+        info('Starting NFD on nodes\n')
+        nfds = AppManager(ndn, ndn.net.hosts, Nfd)
+        time.sleep(10)
 
-    info('Starting PingServer on nodes\n')
-    ping_servers = AppManager(ndn, ndn.net.hosts, PingServer)
+        info('Starting PingServer on nodes\n')
+        ping_servers = AppManager(ndn, ndn.net.hosts, PingServer)
 
-    if PROTO == 'dv':
-        info('Starting DV on nodes\n')
-        dvs = AppManager(ndn, ndn.net.hosts, DV)
-    elif PROTO == 'ls':
-        info('Starting NLSR on nodes\n')
-        nlsrs = AppManager(ndn, ndn.net.hosts, Nlsr)
-    else:
-        raise ValueError('Invalid PROTO')
+        if PROTO == 'dv':
+            info('Starting DV on nodes\n')
+            dvs = AppManager(ndn, ndn.net.hosts, DV)
+        elif PROTO == 'ls':
+            info('Starting NLSR on nodes\n')
+            nlsrs = AppManager(ndn, ndn.net.hosts, Nlsr)
+        else:
+            raise ValueError('Invalid PROTO')
 
-    if DEBUG:
-        PlayServer(ndn.net).start()
-        ndn.stop()
-        exit(0)
+        if DEBUG:
+            PlayServer(ndn.net).start()
+            ndn.stop()
+            exit(0)
 
-    # more time for router to converge
-    info('Waiting for router to converge\n')
-    time.sleep(60)
+        # more time for router to converge
+        info('Waiting for router to converge\n')
+        time.sleep(60)
 
     # calculate scenario variables
     info('Starting Ping on nodes\n')
@@ -122,7 +143,7 @@ def start():
     random.seed(SEED+2)
     flows = set()
     pingss = []
-    while len(pingss) < NUM_PINGSS:
+    while len(flows) < NUM_PINGSS:
         source = random.choice(all_hosts)
         target = random.choice(all_hosts)
 
@@ -130,14 +151,19 @@ def start():
             continue
 
         flow = f'{source.name}->{target.name}'
+        flows.add(flow)
         if flow in flows:
             continue
 
         print('Setting up flow:', flow)
-        pingss.append(AppManager(ndn, [source], Ping, pfx=f'/{target.name}/ping', logname=target.name))
+
+        if not DRY:
+            pingss.append(AppManager(ndn, [source], Ping, pfx=f'/{target.name}/ping', logname=target.name))
 
     # scenario start
-    time.sleep(5)
+    if not DRY:
+        time.sleep(5)
+
     random.seed(SEED+3)
 
     for i in range(SCEN_MAX_SEC // SCEN_INTERVAL):
@@ -151,7 +177,19 @@ def start():
                 if random.random() < 1 / MTTF:
                     setLinkParams(link, loss=100.0)
                     print('Link', link, 'broken')
-        time.sleep(SCEN_INTERVAL)
+
+        if not DRY:
+            time.sleep(SCEN_INTERVAL)
+        else:
+            for flow in flows:
+                source_name, target_name = flow.split('->')
+                source = ndn.net.getNodeByName(source_name)
+                target = ndn.net.getNodeByName(target_name)
+
+                # make dummy log dir and file
+                os.makedirs(f'/tmp/minindn/{source_name}/log', exist_ok=True)
+                with open(f'/tmp/minindn/{source_name}/log/ping-{target_name}.log', 'a') as f:
+                    f.write('.' if flow_works(source, target, set()) else 'x')
 
         if (i % 10) == 0:
             print('TIME:', i * SCEN_INTERVAL, end='\t')
@@ -171,7 +209,7 @@ if __name__ == '__main__':
     MTTR = 120
 
     for run in range(1, 4):
-        NAME_PFX = f'base_{run}'
+        NAME_PFX = f'dry_{run}'
         SEED = run - 1
 
         for mttf in [4000, 3000, 2000, 1500, 1000, 500, 300]:
