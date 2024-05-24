@@ -151,9 +151,9 @@ def start():
             continue
 
         flow = f'{source.name}->{target.name}'
-        flows.add(flow)
         if flow in flows:
             continue
+        flows.add(flow)
 
         print('Setting up flow:', flow)
 
@@ -209,7 +209,7 @@ if __name__ == '__main__':
     MTTR = 120
 
     for run in range(1, 4):
-        NAME_PFX = f'dry_{run}'
+        NAME_PFX = f'base_{run}'
         SEED = run - 1
 
         for mttf in [4000, 3000, 2000, 1500, 1000, 500, 300]:
