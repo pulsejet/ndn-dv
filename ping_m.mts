@@ -32,7 +32,7 @@ export default async function main() {
         try {
             await consume(interest, {
                 retx: {
-                    limit: 3,
+                    limit: 2,
                     interval: 500,
                 }
             });
