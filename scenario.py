@@ -34,7 +34,7 @@ PROTO = 'dv'
 
 DEBUG = False
 
-DRY = True
+DRY = False
 
 def chooseRandN(n, lst, seed):
     random.seed(seed)
