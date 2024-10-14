@@ -14,7 +14,7 @@ from minindn.apps.nlsr import Nlsr
 from mininet.link import Link
 from mininet.node import Node
 
-from minindn_play.server import PlayServer
+#from minindn_play.server import PlayServer
 
 from dv import DV
 from ping import PingServer, Ping
@@ -22,7 +22,7 @@ from ping import PingServer, Ping
 TMP_DIR = '/work/tmp'
 SEED = 0
 
-NUM_PINGSS = 80
+NUM_PINGSS = 12
 
 SCEN_MAX_SEC = 300
 SCEN_INTERVAL = 1
@@ -124,7 +124,7 @@ def start():
             raise ValueError('Invalid PROTO')
 
         if DEBUG:
-            PlayServer(ndn.net).start()
+            #PlayServer(ndn.net).start()
             ndn.stop()
             exit(0)
 
