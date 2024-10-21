@@ -18,7 +18,7 @@ const TT = {
 
 const buildAdv = new StructBuilder("advertisement", TT.advertisement).add(
   TT.ribEntry,
-  "ribEntry",
+  "ribEntries",
   StructFieldComponentNested,
   { required: true, repeat: true }
 );
