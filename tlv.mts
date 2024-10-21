@@ -9,16 +9,16 @@ import {
 const TT = {
   ...l3TT,
   advertisement: 201,
-  rib: 202,
+  ribEntry: 202,
   destination: 203,
   nextHop: 204,
   cost: 205,
   other: 206,
 } as const;
 
-const buildAdv = new StructBuilder("Advertisement", TT.advertisement).add(
-  TT.rib,
-  "rib",
+const buildAdv = new StructBuilder("advertisement", TT.advertisement).add(
+  TT.ribEntry,
+  "ribEntry",
   StructFieldComponentNested,
   { required: true, repeat: true }
 );
@@ -27,7 +27,7 @@ export class Adv extends buildAdv.baseClass<Adv>() {}
 
 buildAdv.subclass = Adv;
 
-const buildRIBEntry = new StructBuilder("ribEntry", TT.rib)
+const buildRIBEntry = new StructBuilder("ribEntry", TT.ribEntry)
   .add(TT.destination, "destination", StructFieldName, { required: true })
   .add(TT.nextHop, "nextHop", StructFieldName, { required: true })
   .add(TT.cost, "cost", StructFieldNNI, { required: true })
