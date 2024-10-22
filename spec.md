@@ -8,13 +8,27 @@ global sync group for global prefix table, each router uses it to compute FIB
 
 ## 2. Format and Naming
 
-### Advertisement
+### Sync Interest:
+
+`network/nodeid/sync/statevector/hash`
+
+### Data Interest:
+
+`network/nodeid/adv/seqnum`
 
 ## 3. TLV Specification
 
 ```
 Advertisement = ADVERTISEMENT-TYPE TLV-LENGTH
+  *Link
   *RIBEntry
+
+Link = LINK-TYPE TLV-LENGTH
+  Intf
+  Neighbor
+
+Intf = INTF-TYPE TLV-LENGTH Number
+Neighbor = NEIGHBOR-TYPE TLV-LENGTH Name
 
 RIBEntry = RIB-ENTRY-TYPE TLV-LENGTH
   Destination
@@ -27,12 +41,15 @@ NextHop = NEXT-HOP-TYPE TLV-LENGTH Name
 Cost = COST-TYPE TLV-LENGTH NonNegativeInteger
 Other = OTHER-TYPE TLV-LENGTH NonNegativeInteger
 
-DESTIONATION-TYPE = 201
-NEXT-HOP-TYPE = 202
-ADVERTISEMENT-TYPE = 203
-RIB-ENTRY-TYPE = 204
-COST-TYPE = 205
-OTHER-TYPE = 206
+ADVERTISEMENT-TYPE = 201
+LINK-TYPE = 202
+INTF-TYPE = 203
+NEIGHBOR-TYPE = 204
+RIB-ENTRY-TYPE = 205
+DESTIONATION-TYPE = 206
+NEXT-HOP-TYPE = 207
+COST-TYPE = 208
+OTHER-TYPE = 209
 ```
 
 global mapping table later

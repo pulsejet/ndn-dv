@@ -13,7 +13,8 @@
     "@ndn/sync": "https://ndnts-nightly.ndn.today/sync-api.tgz",
     "@ndn/tlv": "https://ndnts-nightly.ndn.today/tlv.tgz",
     "@ndn/util": "https://ndnts-nightly.ndn.today/util.tgz",
-    "deep-equal": "^2.2.3"
+    "deep-equal": "^2.2.3",
+    "ts-node": "^10.9.2"
   },
   "devDependencies": {
     "@types/deep-equal": "^1.0.4",

@@ -4,7 +4,7 @@ import { Config, IAdvertisement, ILink, IRibEntry } from "./typings.mjs";
 import * as proc from "./proc.js";
 import { consume, produce } from "@ndn/endpoint";
 import deepEqual from "deep-equal";
-import { StateVector } from "@ndn/svs";
+import { encodeAdv, decodeAdv } from "./tlv.mjs";
 
 const NUM_FAILS = 5;
 
@@ -116,7 +116,7 @@ export class DV {
 
   async advertise(interest: Interest) {
     const advertisement = this.getMyAdvertisement();
-    const content = new TextEncoder().encode(JSON.stringify(advertisement));
+    const content = encodeAdv(advertisement);
     return new Data(interest.name, content, Data.FreshnessPeriod(1));
   }
 
@@ -166,8 +166,7 @@ export class DV {
         Interest.Lifetime(1000)
       );
       const data = await consume(interest);
-      const json = new TextDecoder().decode(data.content);
-      const newAdvert = JSON.parse(json);
+      const newAdvert = decodeAdv(data.content);
 
       link.nerrors = 0;
       if (!deepEqual(newAdvert, link.advert)) {
@@ -193,6 +192,7 @@ export class DV {
   }
 
   async notifyChange() {
+    // update interest
     await Promise.allSettled(
       this.config.links.map((link) =>
         (async () => {
