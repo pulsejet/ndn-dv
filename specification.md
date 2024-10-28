@@ -1,4 +1,4 @@
-# ndn-dv
+# ndn-dv specification
 
 This page describes the protocol specification of NDN Distance Vector Routing (ndn-dv).
 
@@ -64,7 +64,26 @@ COST-TYPE = 207
 OTHER-COST-TYPE = 208
 ```
 
-TODO: global mapping table
+```abnf
+PrefixOpList = PREFIX-OP-LIST-TYPE TLV-LENGTH
+               ExitRouter
+               [*PrefixOpReset]
+               [*PrefixOpAdd]
+               [*PrefixOpRemove]
+
+ExitRouter = DESTINATION-TYPE TLV-LENGTH Name
+PrefixOpReset = PREFIX-OP-RESET-TYPE TLV-LENGTH
+PrefixOpAdd = PREFIX-OP-ADD-TYPE TLV-LENGTH
+              Name
+              Cost
+PrefixOpRemove = PREFIX-OP-REMOVE-TYPE TLV-LENGTH
+                 Name
+
+PREFIX-OP-LIST-TYPE = 221
+PREFIX-OP-RESET-TYPE = 222
+PREFIX-OP-ADD-TYPE = 223
+PREFIX-OP-REMOVE-TYPE = 224
+```
 
 ## 4. Protocol Operation
 
@@ -90,9 +109,12 @@ One `AdvEntry` is generated for each RIB entry and contains the following fields
 1. `Cost`: Cost associated with the next-hop interface.
 1. `OtherCost`: Cost associated with the *second-best* next-hop interface.
 
-- When the advertisement changes, the router increments the sequence number for the *Advertisement Sync* group.
-- (TODO) The sequence number is incremented periodically every 10 seconds.
-- (TODO) Neighbor is considered dead if no update is received for 3 periods.
+Notes:
+
+1. If multiple next hops have the same cost, the router chooses the next hop with the lexicographically lowest name.
+1. If the advertisement changes, the router increments the sequence number for the *Advertisement Sync* group.
+1. (TODO) The sequence number is incremented periodically every 10 seconds.
+1. (TODO) Neighbor is considered dead if no update is received for 3 periods.
 
 ### C. Update Processing
 
@@ -120,20 +142,33 @@ for n in neighbors:
 
 `INFINITY` is the maximum cost value, set to `16` by default.
 
-### D. FIB Computation
+### D. Prefix Sync
 
-#### Global Prefix Table
+Each router maintains a global prefix table that maps prefixes to routers that can reach them.
 
-- Fields:
-  - `Name Prefix`: target prefix
-  - `Exit Router`: routers associated with prefix (can you have multiple)
-- Each router maintains a copy
-- Table synchronized using SVS Sync group consisting of all routers
+1. When any router makes a change to their local prefix list, it increments the
+   sequence number for the *Prefix Sync* group, and publishes a `PrefixOpList`
+   message. The contents of the `PrefixOpList` must be processed strictly in order.
 
-#### FIB
+1. When a router starts, it sends a `PREFIX-OP-RESET` operation.
+   This clears all prefix entries for the sender at all routers.
 
-- Fields:
-  - `Name Prefix`: target prefix
-  - `Next Hops`: list of interfaces linking to routers that can reach a target prefix, as well as associated cost for that prefix
-- Contains entry for all prefixes in prefix table with matching exit router entry in RIB
-- (tiebreaker for same cost)
+1. When a router adds a new prefix, it sends a `PREFIX-OP-ADD` operation.
+   If the cost is updated, the router sends a `PREFIX-OP-ADD` with the new cost.
+
+1. When a router removes a prefix, it sends a `PREFIX-OP-REMOVE` operation.
+
+### E. FIB Computation
+
+The FIB is configured based on the RIB state and the global prefix table.
+
+1. For each prefix in the global prefix table, the router selects the lowest-cost
+   next-hop interface from the RIB state and installs a FIB entry.
+
+1. If the prefix is not reachable, any existing FIB entry is removed.
+
+1. If the prefix is reachable through multiple interfaces, the router installs
+   multiple FIB entries, one for each interface.
+
+1. When a prefix destination has multiple exit routers, the router chooses the exit
+   router that it can reach with the lowest cost.
