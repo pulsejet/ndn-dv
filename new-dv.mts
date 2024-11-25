@@ -1,4 +1,4 @@
-import { Component, Data, Interest, NackHeader, Name } from "@ndn/packet";
+import { Data, Interest, Name } from "@ndn/packet";
 import { SvSync, type SyncNode, type SyncUpdate } from "@ndn/svs";
 import {
   Config,
@@ -9,17 +9,12 @@ import {
   ISvEntry,
   IPrefixUpdate,
 } from "./typings.mjs";
-import { Adv, RIBEntry, Link } from "./tlv-adv.mjs";
-import { Encoder, Decoder } from "@ndn/tlv";
 import { encodeAdv, decodeAdv } from "./tlv-adv.mjs";
 import { encodeOpList, decodeOpList } from "./tlv-prefix.mjs";
 
 import * as proc from "./proc.js";
 import { consume, produce } from "@ndn/endpoint";
 import deepEqual from "deep-equal";
-import equal from "fast-deep-equal/es6";
-import { openSocket } from "@ndn/node-transport/lib/udp-helper.js";
-import { isJSDocThisTag } from "typescript";
 
 const NUM_FAILS = 5;
 
@@ -34,74 +29,25 @@ export class DV {
   private prefixNode?: SyncNode;
   private prefixUpdates: Map<number, IPrefixOps>;
   private prefixTable: Map<string, Set<string>>;
-  private syncInsts: Map<Name, SvSync>;
-  private advStateVector: Map<Name, number>;
-  private nodeId: Name;
+  private syncInsts: Map<string, SvSync>;
+  private advStateVector: Map<string, number>;
 
   constructor(private config: Config) {
     this.advStateVector = new Map();
     this.fibStateVector = new Map();
     this.syncInsts = new Map();
-    this.nodeId = new Name(config.name);
     this.prefixUpdates = new Map();
     this.prefixTable = new Map();
-    console.log(`${config.sync}/${config.name}`);
-    this.createSyncGroups().then(() => this.setup());
-  }
-
-  async createSyncGroups() {
-    // advertisement sync group
-    await SvSync.create({
-      describe: `/${this.config.name}/32=DV/32=ADS`,
-      syncPrefix: new Name(`/${this.config.name}/32=DV/32=ADS`),
-      steadyTimer: [1000, 0.1],
-      initialize: (svSync: SvSync) => {
-        this.syncInsts.set(new Name(this.config.name), svSync);
-        this.advNode = svSync.add(this.config.name); // advNode only publishers
-        console.log(svSync);
-      },
-    });
-
-    await SvSync.create({
-      // initialize global prefix sync group node
-      describe: `${this.config.sync}/32=DV/32=PFXS`,
-      syncPrefix: new Name(`${this.config.sync}/32=DV/32=PFXS`),
-      steadyTimer: [1000, 0.1],
-      initialize: (svSync: SvSync) => {
-        this.syncInsts.set(new Name(this.config.name), svSync);
-        this.prefixNode = svSync.add(this.config.name); // advNode only publishers
-        svSync.addEventListener("update", (update) => {
-          this.handlePrefixSyncUpdate(update);
-        });
-        console.log(svSync);
-      },
-    });
-
-    // join neighbor sync groups
-    for (const link of this.config.links) {
-      console.log(`/${link.other_name}/32=DV/32=ADS`);
-      await SvSync.create({
-        describe: `/${link.other_name}/32=DV/32=ADS`,
-        syncPrefix: new Name(`/${link.other_name}/32=DV/32=ADS`),
-        steadyTimer: [1000, 0.1],
-        initialize: (svSync: SvSync) => {
-          this.syncInsts.set(new Name(link.other_name), svSync);
-          svSync.addEventListener("update", (update) => {
-            this.handleAdvSyncUpdate(update);
-          });
-          console.log(svSync);
-        },
-      });
-    }
+    this.setup();
   }
 
   async setup() {
-    // set prefix sync group in NFD to be multicast
-    await proc.setStrategy(
-      `${this.config.sync}/32=DV/32=PFXS`,
-      "/localhost/nfd/strategy/multicast"
-    );
+    await this.setupNFDRoutes();
+    await this.createSyncGroups();
+    await this.start();
+  }
 
+  async setupNFDRoutes() {
     for (const link of this.config.links) {
       // Create face to neighbor
       try {
@@ -141,7 +87,63 @@ export class DV {
       // Other initializations
       link.nerrors ??= 0;
     }
+  }
 
+  async createSyncGroups() {
+    // advertisement sync group
+    await SvSync.create({
+      describe: `/${this.config.name}/32=DV/32=ADS`,
+      syncPrefix: new Name(`/${this.config.name}/32=DV/32=ADS`),
+      steadyTimer: [1000, 0.1],
+      initialize: (svSync: SvSync) => {
+        this.syncInsts.set(this.config.name, svSync);
+        this.advNode = svSync.add(this.config.name); // advNode only publishers
+      },
+    });
+
+    // set adv sync group in NFD to be multicast
+    await proc.setStrategy(
+      `/${this.config.name}/32=DV/32=ADS`,
+      "/localhost/nfd/strategy/multicast"
+    );
+
+    await SvSync.create({
+      // initialize global prefix sync group node
+      describe: `${this.config.sync}/32=DV/32=PFXS`,
+      syncPrefix: new Name(`${this.config.sync}/32=DV/32=PFXS`),
+      steadyTimer: [1000, 0.1],
+      initialize: (svSync: SvSync) => {
+        this.syncInsts.set(this.config.name, svSync);
+        this.prefixNode = svSync.add(this.config.name); // advNode only publishers
+        svSync.addEventListener("update", (update) => {
+          this.handlePrefixSyncUpdate(update);
+        });
+      },
+    });
+
+    // set prefix sync group in NFD to be multicast
+    await proc.setStrategy(
+      `${this.config.sync}/32=DV/32=PFXS`,
+      "/localhost/nfd/strategy/multicast"
+    );
+
+    // join neighbor sync groups
+    for (const link of this.config.links) {
+      await SvSync.create({
+        describe: `/${link.other_name}/32=DV/32=ADS`,
+        syncPrefix: new Name(`/${link.other_name}/32=DV/32=ADS`),
+        steadyTimer: [1000, 0.1],
+        initialize: (svSync: SvSync) => {
+          this.syncInsts.set(link.other_name, svSync);
+          svSync.addEventListener("update", (update) => {
+            this.handleAdvSyncUpdate(update);
+          });
+        },
+      });
+    }
+  }
+
+  async start() {
     // Register own advertisement prefix
     produce(`/${this.config.name}/32=DV/32=ADV`, this.advertise.bind(this));
 
@@ -163,16 +165,12 @@ export class DV {
       this.getPrefixUpdates.bind(this)
     );
 
-    setInterval(() => {
-      this.prefixNode!.seqNum++;
-      this.prefixUpdates.set(this.prefixNode!.seqNum, ops);
-    }, 5000);
+    this.prefixNode!.seqNum++;
+    const opReset: IPrefixOps = { router: this.config.name, reset: true };
+    this.prefixUpdates.set(this.prefixNode!.seqNum, opReset);
 
-    // set adv sync group in NFD to be multicast
-    await proc.setStrategy(
-      `/${this.config.name}/32=DV/32=ADS`,
-      "/localhost/nfd/strategy/multicast"
-    );
+    this.prefixNode!.seqNum++;
+    this.prefixUpdates.set(this.prefixNode!.seqNum, ops);
 
     // Initial RIB computation
     this.scheduleRibUpdate();
@@ -180,9 +178,10 @@ export class DV {
     // Initial FIB scheduler
     this.processFibUpdate();
 
-    // setInterval(async () => {
-    //   this.produceSyncUpdate();
-    // }, 1000);
+    // heartbeat for advertisements
+    setInterval(async () => {
+      this.fetchAllAdvertisements();
+    }, 2000);
   }
 
   // handle incoming advertisement sync updates
@@ -190,12 +189,12 @@ export class DV {
     const { id: rawId, hiSeqNum: seqNum } = update;
     const id = rawId.toString().slice(3); // remove "/8=" prefix
     console.log("adv id:", id, "seqNum:", seqNum);
-    if (this.advStateVector.get(new Name(id)) ?? 0 > seqNum) return; // stale update
-    this.advStateVector.set(new Name(id), seqNum);
+    if ((this.advStateVector.get(id) ?? 0) > seqNum) return; // stale update
+    this.advStateVector.set(id, seqNum);
     const link = this.config.links.find((link) => link.other_name === id);
     if (link) {
       this.fetchAdvertisement(link, seqNum);
-    } else if (id !== this.nodeId) {
+    } else if (id !== this.config.name) {
       console.warn(
         `Received advertisement update notification from unknown neighbor ${id}`
       );
@@ -206,6 +205,17 @@ export class DV {
     const advertisement = this.getMyAdvertisement();
     const content = encodeAdv(advertisement);
     return new Data(interest.name, content, Data.FreshnessPeriod(1));
+  }
+
+  async fetchAllAdvertisements() {
+    await Promise.allSettled(
+      this.config.links.map((link) =>
+        this.fetchAdvertisement(
+          link,
+          this.advStateVector.get(link.other_name) ?? 1
+        )
+      )
+    );
   }
 
   async fetchAdvertisement(link: ILink, seqNum: number) {
@@ -237,6 +247,10 @@ export class DV {
         );
         link.advert = undefined;
         this.scheduleRibUpdate();
+      } else {
+        // retry if below allowed number of fails
+        console.log(`Retrying advertisement fetch, errors: ${link.nerrors}`);
+        this.fetchAdvertisement(link, seqNum);
       }
     }
   }
@@ -289,7 +303,7 @@ export class DV {
     }
 
     this.advNode.seqNum++; // just inc this and that should handle it
-    console.log(`DV ${this.nodeId}: Published adv update`);
+    console.log(`DV ${this.config.name}: Published adv update`);
   }
 
   computeNewRib() {
@@ -333,7 +347,6 @@ export class DV {
 
   // handle incoming prefix table sync updates
   async handlePrefixSyncUpdate(update: SyncUpdate) {
-    console.log(`handling prefix sync update from ${update.id.toString()}`);
     const { id: rawId, hiSeqNum: seqNum } = update;
     const id = rawId.toString().slice(3); // remove "/8="
     console.log("prefix router id:", id, "seqNum:", seqNum);
@@ -378,17 +391,21 @@ export class DV {
         console.error(
           `Too many errors, aborting prefix fetch. Suppressing further error logs.`
         );
+      } else {
+        // retry if below allowed number of fails
+        console.log(`Retrying prefix fetch, errors: ${nerrors}`);
+        this.fetchPrefixData(id, seqNum);
       }
     }
   }
 
-  async resetPrefixTable(router: string) {
+  resetPrefixTable(router: string) {
     for (const [prefix, routers] of this.prefixTable) {
       routers.delete(router);
     }
   }
 
-  async updatePrefixTable(ops: IPrefixOps) {
+  updatePrefixTable(ops: IPrefixOps) {
     console.log("prefix table update ops: ", ops);
     if (ops.updates) {
       for (const entry of ops.updates) {
@@ -412,41 +429,8 @@ export class DV {
     this.processFibUpdate();
   }
 
-  // producePrefixTableUpdates(
-  //   oldPrefixes: Set<string>,
-  //   newPrefixes: Set<string>
-  // ) {
-  //   // Map<string, Set<string>>;
-  //   const ops: IPrefixOps = { router: this.config.name };
-  //   ops.updates = [];
-
-  //   for (const prefix of newPrefixes) {
-  //     if (!oldPrefixes.has(prefix)) {
-  //       ops.updates.push({ [prefix]: "add" });
-  //     }
-  //   }
-
-  //   for (const prefix of oldPrefixes) {
-  //     if (!newPrefixes.has(prefix)) {
-  //       ops.updates.push({ [prefix]: "rmv" });
-  //     }
-  //   }
-
-  //   if (ops.updates && ops.updates.length) {
-  //     this.prefixNode!.seqNum++;
-  //     produce(
-  //       `/${this.config.name}/32=DV/32=PFX/${this.prefixNode?.seqNum}`,
-  //       async () => {
-  //         return new Data(encodeOpList(ops));
-  //       }
-  //     );
-  //   }
-  // }
-
   async getPrefixUpdates(interest: Interest) {
     try {
-      console.log("getting prefix update at name:", interest.name.toString());
-      // Map<string, Set<string>>;
       const seqNum = Number(
         interest.name.toString().split("/").at(-1)!.slice(3)
       ); // remove "/58=" prefix
@@ -461,7 +445,7 @@ export class DV {
         throw new Error(`Accessed invalid prefix sequence number: ${seqNum}`);
       }
     } catch (e) {
-      console.error(e);
+      console.error(`Error during prefix update lookup: ${e}`);
     }
   }
 
@@ -493,30 +477,34 @@ export class DV {
     oldRib: Record<string, IRibEntry>,
     newRib: Record<string, IRibEntry>
   ) {
-    for (const [router, newEntry] of Object.entries(newRib)) {
-      if (!deepEqual(oldRib[router] ?? {}, newEntry)) {
-        const [nh, params] = Object.entries(newEntry)[0];
-        const nextHop = Number(nh);
-        console.log("nh and params: ", nh, params);
-        if (nextHop > 0) {
-          const prefix_data_route = `${router}/32=DV/32=PFX`;
-          await proc.addRoute(prefix_data_route, nextHop, params.cost);
-          console.log(`Added route to ${prefix_data_route} via faceid ${nh}`);
+    try {
+      for (const [router, newEntry] of Object.entries(newRib)) {
+        if (!deepEqual(oldRib[router] ?? {}, newEntry)) {
+          const [nh, params] = Object.entries(newEntry)[0];
+          const nextHop = Number(nh);
+          if (nextHop > 0) {
+            const prefix_data_route = `${router}/32=DV/32=PFX`;
+            await proc.addRoute(prefix_data_route, nextHop, params.cost);
+            console.log(`Added route to ${prefix_data_route} via faceid ${nh}`);
+          }
         }
       }
-    }
 
-    for (const [router, oldEntry] of Object.entries(oldRib)) {
-      if (!newRib[router]) {
-        const [nh, params] = Object.entries(oldEntry)[0];
-        const nextHop = Number(nh);
-        console.log("nh and params: ", nh, params);
-        if (nextHop > 0) {
-          const prefix_data_route = `${router}/32=DV/32=PFX`;
-          await proc.removeRoute(prefix_data_route, nextHop);
-          console.log(`Removed route to ${prefix_data_route} via faceid ${nh}`);
+      for (const [router, oldEntry] of Object.entries(oldRib)) {
+        if (!newRib[router]) {
+          const [nh, params] = Object.entries(oldEntry)[0];
+          const nextHop = Number(nh);
+          if (nextHop > 0) {
+            const prefix_data_route = `${router}/32=DV/32=PFX`;
+            await proc.removeRoute(prefix_data_route, nextHop);
+            console.log(
+              `Removed route to ${prefix_data_route} via faceid ${nh}`
+            );
+          }
         }
       }
+    } catch (e) {
+      console.error(`Error during route update: ${e}`);
     }
   }
 
@@ -540,18 +528,10 @@ export class DV {
         for (const [prefix, routers] of this.prefixTable) {
           if (routers.has(router)) {
             if (this.fib[prefix]) {
-              // console.log(
-              //   "inside loop:",
-              //   this.fib[prefix],
-              //   prefix,
-              //   routers,
-              //   router
-              // );
               for (const [nexthop, params] of Object.entries(
                 this.fib[prefix]
               )) {
                 const nh = Number(nexthop);
-                console.log(params, diff[nh]);
 
                 // entry is the same, just skip
                 if (deepEqual(params, diff[nh])) {
@@ -559,24 +539,41 @@ export class DV {
                 }
 
                 // remove this route, may be added later
+                // if (nh > 0) {
+                //   await proc.removeRoute(prefix, nh);
+                //   console.log(
+                //     `Removed route to ${prefix} via faceid ${nexthop}`
+                //   );
+                // }
+
                 delete this.fib[prefix][nh];
                 // if prefix is no longer reachable from router, delete from fib
-                if (Object.keys(this.fib[prefix]).length === 0) {
+                if (
+                  this.fib[prefix] &&
+                  Object.keys(this.fib[prefix]).length === 0
+                ) {
                   delete this.fib[prefix];
                 }
               }
             }
 
             // add new entries
-            for (const [nexthop, params] of Object.entries(diff)) {
-              const nh = Number(nexthop);
+            if (diff) {
+              for (const [nexthop, params] of Object.entries(diff)) {
+                const nh = Number(nexthop);
 
-              if (params.cost >= 16) continue;
-              if (nh < 0) continue;
+                if (params.cost >= 16) continue;
+                if (nh < 0) continue;
 
-              // if fib previously didn't have entry for prefix, add to fib
-              this.fib[prefix] ??= {};
-              this.fib[prefix][nh] = params;
+                // if (nh > 0) {
+                //   await proc.addRoute(prefix, nh, params.cost);
+                //   console.log(`Added route to ${prefix} via faceid ${nexthop}`);
+                // }
+
+                // if fib previously didn't have entry for prefix, add to fib
+                this.fib[prefix] ??= {};
+                this.fib[prefix][nh] = params;
+              }
             }
           }
         }

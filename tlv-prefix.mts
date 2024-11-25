@@ -1,19 +1,13 @@
-import {
-  StructBuilder,
-  StructFieldBool,
-  StructFieldBytes,
-  StructFieldNNI,
-} from "@ndn/tlv";
+import { StructBuilder, StructFieldBool } from "@ndn/tlv";
 import { Encoder, Decoder } from "@ndn/tlv";
 import {
   Name,
   Component,
-  TT as l3TT,
   StructFieldName,
   StructFieldComponentNested,
 } from "@ndn/packet";
 
-import { IPrefixOps, IRibEntry, TT } from "./typings.mjs";
+import { IPrefixOps, TT } from "./typings.mjs";
 
 const buildOpList = new StructBuilder("opList", TT.list)
   .add(TT.destination, "exitRouter", StructFieldName, {

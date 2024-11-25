@@ -19,7 +19,7 @@ from mininet.node import Node
 from dv import DV
 from ping import PingServer, Ping
 
-TMP_DIR = '/work/tmp'
+TMP_DIR = '/ndn-dv/tmp'
 SEED = 0
 
 NUM_PINGSS = 12
@@ -202,7 +202,7 @@ def start():
 
     # save stats to results json file
     fail, success, total, fail_pc = getStats(all_hosts)
-    with open(f'/work/results/{PROTO}_{NAME_PFX}_{MTTF}_{MTTR}.json', 'w') as f:
+    with open(f'/ndn-dv/results/{PROTO}_{NAME_PFX}_{MTTF}_{MTTR}.json', 'w') as f:
         json.dump({'fail': fail, 'success': success, 'total': total, 'fail_pc': fail_pc}, f)
 
 if __name__ == '__main__':
