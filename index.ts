@@ -1,3 +1,3 @@
-import('./main.mjs').then(main => {
-    main.default();
+import("./main.mjs").then((main) => {
+  main.default();
 });

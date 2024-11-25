@@ -4,7 +4,6 @@ import { Config, IAdvertisement, ILink, IRibEntry } from "./typings.mjs";
 import * as proc from "./proc.js";
 import { consume, produce } from "@ndn/endpoint";
 import deepEqual from "deep-equal";
-import { encodeAdv, decodeAdv } from "./tlv-adv.mjs";
 
 const NUM_FAILS = 5;
 
@@ -116,7 +115,7 @@ export class DV {
 
   async advertise(interest: Interest) {
     const advertisement = this.getMyAdvertisement();
-    const content = encodeAdv(advertisement);
+    const content = new TextEncoder().encode(JSON.stringify(advertisement));
     return new Data(interest.name, content, Data.FreshnessPeriod(1));
   }
 
@@ -143,9 +142,9 @@ export class DV {
     const msgTypeStr = new TextDecoder().decode(msgType);
 
     switch (msgTypeStr) {
-      case "ADV": // got advertisement fetch (data interest)
-        return this.advertise(interest); // return advertisement
-      case "UPD": // got incoming update (sync interest)
+      case "ADV":
+        return this.advertise(interest);
+      case "UPD":
         return this.ackUpdate(interest);
       default:
         console.warn(`Received unknown message type: ${msgTypeStr}`);
@@ -166,7 +165,8 @@ export class DV {
         Interest.Lifetime(1000)
       );
       const data = await consume(interest);
-      const newAdvert = decodeAdv(data.content);
+      const json = new TextDecoder().decode(data.content);
+      const newAdvert = JSON.parse(json);
 
       link.nerrors = 0;
       if (!deepEqual(newAdvert, link.advert)) {
@@ -192,7 +192,6 @@ export class DV {
   }
 
   async notifyChange() {
-    // update interest
     await Promise.allSettled(
       this.config.links.map((link) =>
         (async () => {

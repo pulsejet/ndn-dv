@@ -3,7 +3,7 @@ import { Encoder, Decoder } from "@ndn/tlv";
 import { Name, Component } from "@ndn/packet";
 import assert from "node:assert/strict";
 
-import { Adv, RIBEntry, Link, encodeAdv, decodeAdv } from "./tlv.mjs";
+import { Adv, RIBEntry, Link, encodeAdv, decodeAdv } from "./tlv-adv.mjs";
 
 import { IAdvertisement } from "./typings.mjs";
 
