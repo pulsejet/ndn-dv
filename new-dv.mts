@@ -415,18 +415,32 @@ export class DV {
             this.prefixTable.set(prefix, new Set());
           }
           this.prefixTable.get(prefix)!.add(ops.router);
-          this.fibUpdateQueue.set(ops.router, this.rib[ops.router]);
+          this.fib[prefix] ??= {};
+          for (const [nexthop, cost] of Object.entries(this.rib[ops.router])) {
+            const nh = Number(nexthop);
+            this.fib[prefix][nh] = cost;
+            // if (nh > 0) {
+            //   await proc.addRoute(prefix, nh, params.cost);
+            //   console.log(`Added route to ${prefix} via faceid ${nexthop}`);
+            // }
+          }
         } else {
           const [prefix, op] = Object.entries(entry)[0];
           this.prefixTable.get(prefix)!.delete(ops.router);
-          this.fibUpdateQueue.set(ops.router, {
-            [-1]: { cost: Number.MAX_SAFE_INTEGER },
-          });
+          for (const [nexthop, cost] of Object.entries(this.rib[ops.router])) {
+            const nh = Number(nexthop);
+            // if (nh > 0) {
+            //   await proc.removeRoute(prefix, nh);
+            //   console.log(
+            //     `Removed route to ${prefix} via faceid ${nexthop}`
+            //   );
+            // }
+          }
+          delete this.fib[prefix];
         }
       }
     }
     console.log("New prefix table:", this.prefixTable);
-    this.processFibUpdate();
   }
 
   async getPrefixUpdates(interest: Interest) {
@@ -462,7 +476,7 @@ export class DV {
     for (const [router, oldEntry] of Object.entries(oldRib)) {
       if (!newRib[router]) {
         this.fibUpdateQueue.set(router, {
-          [-1]: { cost: Number.MAX_SAFE_INTEGER },
+          0: { cost: Number.MAX_SAFE_INTEGER },
         });
       }
     }
