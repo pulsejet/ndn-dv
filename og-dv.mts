@@ -52,7 +52,7 @@ export class DV {
       }
 
       // Other initializations
-      link.nerrors ??= 0;
+      link.advErrors ??= 0;
     }
 
     // Register own advertisement prefix
@@ -168,20 +168,20 @@ export class DV {
       const json = new TextDecoder().decode(data.content);
       const newAdvert = JSON.parse(json);
 
-      link.nerrors = 0;
+      link.advErrors = 0;
       if (!deepEqual(newAdvert, link.advert)) {
         link.advert = newAdvert;
         this.scheduleRibUpdate();
       }
     } catch (e) {
-      if (link.nerrors < NUM_FAILS) {
+      if (link.advErrors < NUM_FAILS) {
         console.error(
           `Failed to fetch advertisement from ${link.other_name}: ${e}`
         );
       }
 
-      link.nerrors++;
-      if (link.nerrors >= NUM_FAILS && link.advert) {
+      link.advErrors++;
+      if (link.advErrors >= NUM_FAILS && link.advert) {
         console.error(
           `Too many errors, removing advertisements from ${link.other_name}. Suppressing further error logs.`
         );

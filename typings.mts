@@ -13,7 +13,8 @@ export interface ILink {
 
   faceid?: number;
   advert?: IAdvertisement;
-  nerrors: number;
+  advErrors: number;
+  prefixErrors: number;
 }
 
 export type IRibEntry = Record<

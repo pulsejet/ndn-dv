@@ -85,7 +85,8 @@ export class DV {
       }
 
       // Other initializations
-      link.nerrors ??= 0;
+      link.advErrors ??= 0;
+      link.prefixErrors ??= 0;
     }
   }
 
@@ -225,20 +226,20 @@ export class DV {
       const data = await consume(interest);
       const newAdvert = decodeAdv(data.content);
 
-      link.nerrors = 0;
+      link.advErrors = 0;
       if (!deepEqual(newAdvert, link.advert)) {
         link.advert = newAdvert;
         this.scheduleRibUpdate();
       }
     } catch (e) {
-      if (link.nerrors < NUM_FAILS) {
+      if (link.advErrors < NUM_FAILS) {
         console.error(
           `Failed to fetch advertisement from ${link.other_name}: ${e}`
         );
       }
 
-      link.nerrors++;
-      if (link.nerrors >= NUM_FAILS && link.advert) {
+      link.advErrors++;
+      if (link.advErrors >= NUM_FAILS && link.advert) {
         console.error(
           `Too many errors, removing advertisements from ${link.other_name}. Suppressing further error logs.`
         );
@@ -246,7 +247,7 @@ export class DV {
         this.scheduleRibUpdate();
       } else {
         // retry if below allowed number of fails
-        console.log(`Retrying advertisement fetch, errors: ${link.nerrors}`);
+        console.log(`Retrying advertisement fetch, errors: ${link.advErrors}`);
         this.fetchAdvertisement(link, seqNum);
       }
     }
@@ -354,22 +355,29 @@ export class DV {
       this.fibStateVector.get(id)!.pending,
       seqNum
     );
-    await this.fetchPrefixData(id, seqNum);
+    const link = this.config.links.find((link) => link.other_name === id);
+    if (link) {
+      this.fetchPrefixData(link, seqNum);
+    } else if (id !== this.config.name) {
+      console.warn(
+        `Received prefix update notification from unknown neighbor ${id}`
+      );
+    }
   }
 
-  async fetchPrefixData(id: string, seqNum: number) {
-    let nerrors = 0;
+  async fetchPrefixData(link: ILink, seqNum: number) {
     try {
-      const state = this.fibStateVector.get(id)!;
+      const state = this.fibStateVector.get(link.other_name)!;
       while (state.processed < state.pending) {
         const interest = new Interest(
-          `/${id}/32=DV/32=PFX/58=${seqNum}`,
+          `/${link.other_name}/32=DV/32=PFX/58=${seqNum}`,
           Interest.MustBeFresh,
           Interest.Lifetime(1000)
         );
         const data = await consume(interest);
         const opList = decodeOpList(data.content);
         state.processed++;
+        link.prefixErrors = 0;
 
         if (opList.reset) {
           this.resetPrefixTable(opList.router);
@@ -379,19 +387,19 @@ export class DV {
         }
       }
     } catch (e) {
-      if (nerrors < NUM_FAILS) {
-        console.error(`Failed to fetch prefixes from ${id}: ${e}`);
+      if (link.prefixErrors < NUM_FAILS) {
+        console.error(`Failed to fetch prefixes from ${link.other_name}: ${e}`);
       }
 
-      nerrors++;
-      if (nerrors >= NUM_FAILS) {
+      link.prefixErrors++;
+      if (link.prefixErrors >= NUM_FAILS) {
         console.error(
           `Too many errors, aborting prefix fetch. Suppressing further error logs.`
         );
       } else {
         // retry if below allowed number of fails
-        console.log(`Retrying prefix fetch, errors: ${nerrors}`);
-        this.fetchPrefixData(id, seqNum);
+        console.log(`Retrying prefix fetch, errors: ${link.prefixErrors}`);
+        this.fetchPrefixData(link, seqNum);
       }
     }
   }
