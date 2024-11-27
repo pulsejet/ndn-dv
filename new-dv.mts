@@ -191,6 +191,7 @@ export class DV {
     this.advStateVector.set(id, seqNum);
     const link = this.config.links.find((link) => link.other_name === id);
     if (link) {
+      link.advErrors = 0;
       this.fetchAdvertisement(link, seqNum);
     } else if (id !== this.config.name) {
       console.warn(
@@ -239,12 +240,14 @@ export class DV {
       }
 
       link.advErrors++;
-      if (link.advErrors >= NUM_FAILS && link.advert) {
+      if (link.advErrors >= NUM_FAILS) {
         console.error(
           `Too many errors, removing advertisements from ${link.other_name}. Suppressing further error logs.`
         );
-        link.advert = undefined;
-        this.scheduleRibUpdate();
+        if (link.advert) {
+          link.advert = undefined;
+          this.scheduleRibUpdate();
+        }
       } else {
         // retry if below allowed number of fails
         console.log(`Retrying advertisement fetch, errors: ${link.advErrors}`);
@@ -357,6 +360,7 @@ export class DV {
     );
     const link = this.config.links.find((link) => link.other_name === id);
     if (link) {
+      link.prefixErrors = 0;
       this.fetchPrefixData(link, seqNum);
     } else if (id !== this.config.name) {
       console.warn(
