@@ -175,9 +175,6 @@ export class DV {
     // Initial RIB computation
     this.scheduleRibUpdate();
 
-    // Initial FIB scheduler
-    this.processFibUpdate();
-
     // heartbeat for advertisements
     setInterval(async () => {
       this.fetchAllAdvertisements();
@@ -415,29 +412,10 @@ export class DV {
             this.prefixTable.set(prefix, new Set());
           }
           this.prefixTable.get(prefix)!.add(ops.router);
-          this.fib[prefix] ??= {};
-          for (const [nexthop, cost] of Object.entries(this.rib[ops.router])) {
-            const nh = Number(nexthop);
-            this.fib[prefix][nh] = cost;
-            // if (nh > 0) {
-            //   await proc.addRoute(prefix, nh, params.cost);
-            //   console.log(`Added route to ${prefix} via faceid ${nexthop}`);
-            // }
-          }
         } else {
-          const [prefix, op] = Object.entries(entry)[0];
           this.prefixTable.get(prefix)!.delete(ops.router);
-          for (const [nexthop, cost] of Object.entries(this.rib[ops.router])) {
-            const nh = Number(nexthop);
-            // if (nh > 0) {
-            //   await proc.removeRoute(prefix, nh);
-            //   console.log(
-            //     `Removed route to ${prefix} via faceid ${nexthop}`
-            //   );
-            // }
-          }
-          delete this.fib[prefix];
         }
+        this.processFIBUpdateFromPrefixTable(prefix, op, ops.router);
       }
     }
     console.log("New prefix table:", this.prefixTable);
@@ -469,22 +447,18 @@ export class DV {
   ) {
     for (const [router, newEntry] of Object.entries(newRib)) {
       if (!deepEqual(oldRib[router] ?? {}, newEntry)) {
-        this.fibUpdateQueue.set(router, newEntry);
+        this.processFibUpdateFromRIB(router, newEntry);
       }
     }
 
     for (const [router, oldEntry] of Object.entries(oldRib)) {
       if (!newRib[router]) {
-        this.fibUpdateQueue.set(router, {
+        this.processFibUpdateFromRIB(router, {
           0: { cost: Number.MAX_SAFE_INTEGER },
         });
       }
     }
-
-    console.log(this.fibUpdateQueue);
-
-    // produce fib update
-    this.processFibUpdate();
+    console.log("Newly computed FIB:", this.fib);
   }
 
   async updateRoutes(
@@ -522,79 +496,96 @@ export class DV {
     }
   }
 
-  async processFibUpdate() {
-    if (this.prefixNode === undefined) {
-      console.warn("[BUG] prefixNode undefined");
-      return;
-    }
+  async processFibUpdateFromRIB(router: string, entry: IRibEntry) {
     try {
-      while (this.fibUpdateQueue.size > 0) {
-        const val = this.fibUpdateQueue.entries().next().value;
-        if (!val) break;
+      // changes to the fib
+      const diff = structuredClone(entry);
 
-        const [router, entry] = val as [string, IRibEntry];
+      for (const [prefix, routers] of this.prefixTable) {
+        if (routers.has(router)) {
+          if (this.fib[prefix]) {
+            for (const [nexthop, params] of Object.entries(this.fib[prefix])) {
+              const nh = Number(nexthop);
 
-        this.fibUpdateQueue.delete(router);
+              // entry is the same, just skip
+              if (deepEqual(params, diff[nh])) {
+                continue;
+              }
 
-        // changes to the fib
-        const diff = structuredClone(entry);
+              // remove this route, may be added later
+              // if (nh > 0) {
+              //   await proc.removeRoute(prefix, nh);
+              //   console.log(
+              //     `Removed route to ${prefix} via faceid ${nexthop}`
+              //   );
+              // }
 
-        for (const [prefix, routers] of this.prefixTable) {
-          if (routers.has(router)) {
-            if (this.fib[prefix]) {
-              for (const [nexthop, params] of Object.entries(
-                this.fib[prefix]
-              )) {
-                const nh = Number(nexthop);
-
-                // entry is the same, just skip
-                if (deepEqual(params, diff[nh])) {
-                  continue;
-                }
-
-                // remove this route, may be added later
-                // if (nh > 0) {
-                //   await proc.removeRoute(prefix, nh);
-                //   console.log(
-                //     `Removed route to ${prefix} via faceid ${nexthop}`
-                //   );
-                // }
-
-                delete this.fib[prefix][nh];
-                // if prefix is no longer reachable from router, delete from fib
-                if (
-                  this.fib[prefix] &&
-                  Object.keys(this.fib[prefix]).length === 0
-                ) {
-                  delete this.fib[prefix];
-                }
+              delete this.fib[prefix][nh];
+              // if prefix is no longer reachable from router, delete from fib
+              if (
+                this.fib[prefix] &&
+                Object.keys(this.fib[prefix]).length === 0
+              ) {
+                delete this.fib[prefix];
               }
             }
+          }
 
-            // add new entries
-            if (diff) {
-              for (const [nexthop, params] of Object.entries(diff)) {
-                const nh = Number(nexthop);
+          // add new entries
+          if (diff) {
+            for (const [nexthop, params] of Object.entries(diff)) {
+              const nh = Number(nexthop);
 
-                if (params.cost >= 16) continue;
-                if (nh < 0) continue;
+              if (params.cost >= 16) continue;
+              if (nh < 0) continue;
 
-                // if (nh > 0) {
-                //   await proc.addRoute(prefix, nh, params.cost);
-                //   console.log(`Added route to ${prefix} via faceid ${nexthop}`);
-                // }
+              // if (nh > 0) {
+              //   await proc.addRoute(prefix, nh, params.cost);
+              //   console.log(`Added route to ${prefix} via faceid ${nexthop}`);
+              // }
 
-                // if fib previously didn't have entry for prefix, add to fib
-                this.fib[prefix] ??= {};
-                this.fib[prefix][nh] = params;
-              }
+              // if fib previously didn't have entry for prefix, add to fib
+              this.fib[prefix] ??= {};
+              this.fib[prefix][nh] = params;
             }
           }
         }
       }
-      console.log("Newly computed FIB:", this.fib);
     } catch (e) {
       console.error(`Error during FIB update: ${e}`);
+    }
+  }
+
+  async processFIBUpdateFromPrefixTable(
+    prefix: string,
+    op: "add" | "rmv",
+    router: string
+  ) {
+    if (op === "add") {
+      this.fib[prefix] ??= {};
+      if (this.rib[router]) {
+        for (const [nexthop, cost] of Object.entries(this.rib[router])) {
+          const nh = Number(nexthop);
+          this.fib[prefix][nh] = cost;
+          // if (nh > 0) {
+          //   await proc.addRoute(prefix, nh, params.cost);
+          //   console.log(`Added route to ${prefix} via faceid ${nexthop}`);
+          // }
+        }
+      }
+    } else {
+      if (this.rib[router]) {
+        for (const [nexthop, cost] of Object.entries(this.rib[router])) {
+          const nh = Number(nexthop);
+          // if (nh > 0) {
+          //   await proc.removeRoute(prefix, nh);
+          //   console.log(
+          //     `Removed route to ${prefix} via faceid ${nexthop}`
+          //   );
+          // }
+        }
+      }
+      delete this.fib[prefix];
     }
   }
 }
