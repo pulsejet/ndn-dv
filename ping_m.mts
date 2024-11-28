@@ -31,7 +31,6 @@ export default async function main() {
   setInterval(async () => {
     i++;
     const name = `${pfx}/${i}`;
-    console.log(name);
     const interest = new Interest(name, Interest.Lifetime(2000));
 
     try {

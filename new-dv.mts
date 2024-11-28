@@ -28,11 +28,13 @@ export class DV {
   private prefixNode?: SyncNode;
   private prefixUpdates: Map<number, IPrefixOps>;
   private prefixTable: Map<string, Set<string>>;
-  private advStateVector: Map<string, number>;
+  private advStateVector: Record<string, number>;
+  private prefixErrorVector: Record<string, number>;
 
   constructor(private config: Config) {
-    this.advStateVector = new Map();
+    this.advStateVector = {};
     this.fibStateVector = new Map();
+    this.prefixErrorVector = {};
     this.prefixUpdates = new Map();
     this.prefixTable = new Map();
     this.setup();
@@ -202,8 +204,8 @@ export class DV {
     const { id: rawId, hiSeqNum: seqNum } = update;
     const id = rawId.toString().slice(3); // remove "/8=" prefix
     console.log("adv id:", id, "seqNum:", seqNum);
-    if ((this.advStateVector.get(id) ?? 0) > seqNum) return; // stale update
-    this.advStateVector.set(id, seqNum);
+    if ((this.advStateVector[id] ?? 0) > seqNum) return; // stale update
+    this.advStateVector[id] = seqNum;
     const link = this.config.links.find((link) => link.other_name === id);
     if (link) {
       link.advErrors = 0;
@@ -224,10 +226,7 @@ export class DV {
   async fetchAllAdvertisements() {
     await Promise.allSettled(
       this.config.links.map((link) =>
-        this.fetchAdvertisement(
-          link,
-          this.advStateVector.get(link.other_name) ?? 1
-        )
+        this.fetchAdvertisement(link, this.advStateVector[link.other_name] ?? 1)
       )
     );
   }
@@ -373,30 +372,23 @@ export class DV {
       this.fibStateVector.get(id)!.pending,
       seqNum
     );
-    const link = this.config.links.find((link) => link.other_name === id);
-    if (link) {
-      link.prefixErrors = 0;
-      this.fetchPrefixData(link, seqNum);
-    } else if (id !== this.config.name) {
-      console.warn(
-        `Received prefix update notification from unknown neighbor ${id}`
-      );
-    }
+    this.prefixErrorVector[id] = 0;
+    this.fetchPrefixData(id, seqNum);
   }
 
-  async fetchPrefixData(link: ILink, seqNum: number) {
+  async fetchPrefixData(id: string, seqNum: number) {
     try {
-      const state = this.fibStateVector.get(link.other_name)!;
+      const state = this.fibStateVector.get(id)!;
       while (state.processed < state.pending) {
         const interest = new Interest(
-          `/${link.other_name}/32=DV/32=PFX/58=${seqNum}`,
+          `/${id}/32=DV/32=PFX/58=${seqNum}`,
           Interest.MustBeFresh,
           Interest.Lifetime(1000)
         );
         const data = await consume(interest);
         const opList = decodeOpList(data.content);
         state.processed++;
-        link.prefixErrors = 0;
+        this.prefixErrorVector[id] = 0;
 
         if (opList.reset) {
           this.resetPrefixTable(opList.router);
@@ -406,19 +398,22 @@ export class DV {
         }
       }
     } catch (e) {
-      if (link.prefixErrors < NUM_FAILS) {
-        console.error(`Failed to fetch prefixes from ${link.other_name}: ${e}`);
+      this.prefixErrorVector[id] ??= 0;
+      if (this.prefixErrorVector[id] < NUM_FAILS) {
+        console.error(`Failed to fetch prefixes from ${id}: ${e}`);
       }
 
-      link.prefixErrors++;
-      if (link.prefixErrors >= NUM_FAILS) {
+      this.prefixErrorVector[id]++;
+      if (this.prefixErrorVector[id] >= NUM_FAILS) {
         console.error(
           `Too many errors, aborting prefix fetch. Suppressing further error logs.`
         );
       } else {
         // retry if below allowed number of fails
-        console.log(`Retrying prefix fetch, errors: ${link.prefixErrors}`);
-        this.fetchPrefixData(link, seqNum);
+        console.log(
+          `Retrying prefix fetch, errors: ${this.prefixErrorVector[id]}`
+        );
+        this.fetchPrefixData(id, seqNum);
       }
     }
   }

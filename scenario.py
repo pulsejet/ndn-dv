@@ -158,7 +158,7 @@ def start():
         print('Setting up flow:', flow)
 
         if not DRY:
-            pingss.append(AppManager(ndn, [source], Ping, pfx=f'/{target.name}/32=PING', logname=target.name))
+            pingss.append(AppManager(ndn, [source], Ping, pfx=f'/{target.name}_0/ping', logname=target.name))
 
     # scenario start
     if not DRY:
