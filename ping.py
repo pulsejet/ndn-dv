@@ -6,7 +6,7 @@ class PingServer(Application):
     def __init__(self, node):
         Application.__init__(self, node)
         self.logFile = 'pingserver.log'
-        self.prefix = f'/{node.name}'
+        self.prefix = f'/{node.name}_0'
 
     def start(self):
         Application.start(self, ['ndnpingserver', self.prefix], logfile=self.logFile)
@@ -20,4 +20,4 @@ class Ping(Application):
         self.prefix = pfx
 
     def start(self):
-        Application.start(self, ['node', '/work/dist/ping.js', self.prefix], logfile=self.logFile)
+        Application.start(self, ['node', '/ndn-dv/dist/ping.js', self.prefix], logfile=self.logFile)

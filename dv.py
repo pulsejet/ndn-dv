@@ -15,7 +15,7 @@ class DV(Application):
             'sync': '/dv/sync',
             'unix': f'/run/nfd/{node.name}.sock',
             'name': node.name,
-            'links': [],
+            'links': []
         }
 
         # Getting all link pairs
@@ -28,4 +28,4 @@ class DV(Application):
             json.dump(config, f)
 
     def start(self):
-        Application.start(self, ['node', '/work/dist/index.js', self.config], logfile=self.logFile)
+        Application.start(self, ['node', '/ndn-dv/dist/index.js', self.config], logfile=self.logFile)

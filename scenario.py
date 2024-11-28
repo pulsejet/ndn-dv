@@ -14,15 +14,15 @@ from minindn.apps.nlsr import Nlsr
 from mininet.link import Link
 from mininet.node import Node
 
-from minindn_play.server import PlayServer
+#from minindn_play.server import PlayServer
 
 from dv import DV
 from ping import PingServer, Ping
 
-TMP_DIR = '/work/tmp'
+TMP_DIR = '/ndn-dv/tmp'
 SEED = 0
 
-NUM_PINGSS = 80
+NUM_PINGSS = 12
 
 SCEN_MAX_SEC = 300
 SCEN_INTERVAL = 1
@@ -124,13 +124,13 @@ def start():
             raise ValueError('Invalid PROTO')
 
         if DEBUG:
-            PlayServer(ndn.net).start()
+            #PlayServer(ndn.net).start()
             ndn.stop()
             exit(0)
 
         # more time for router to converge
         info('Waiting for router to converge\n')
-        time.sleep(60)
+        time.sleep(10)
 
     # calculate scenario variables
     info('Starting Ping on nodes\n')
@@ -158,7 +158,7 @@ def start():
         print('Setting up flow:', flow)
 
         if not DRY:
-            pingss.append(AppManager(ndn, [source], Ping, pfx=f'/{target.name}/ping', logname=target.name))
+            pingss.append(AppManager(ndn, [source], Ping, pfx=f'/{target.name}_0/ping', logname=target.name))
 
     # scenario start
     if not DRY:
@@ -202,7 +202,7 @@ def start():
 
     # save stats to results json file
     fail, success, total, fail_pc = getStats(all_hosts)
-    with open(f'/work/results/{PROTO}_{NAME_PFX}_{MTTF}_{MTTR}.json', 'w') as f:
+    with open(f'/ndn-dv/results/{PROTO}_{NAME_PFX}_{MTTF}_{MTTR}.json', 'w') as f:
         json.dump({'fail': fail, 'success': success, 'total': total, 'fail_pc': fail_pc}, f)
 
 if __name__ == '__main__':
