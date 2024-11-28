@@ -20,4 +20,4 @@ class Ping(Application):
         self.prefix = pfx
 
     def start(self):
-        Application.start(self, ['node', '/work/dist/ping.js', self.prefix], logfile=self.logFile)
+        Application.start(self, ['node', '/ndn-dv/dist/ping.js', self.prefix], logfile=self.logFile)

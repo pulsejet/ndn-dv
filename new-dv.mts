@@ -22,20 +22,17 @@ export class DV {
   private rib: Record<string, IRibEntry> = {};
 
   private fib: Record<string, IRibEntry> = {};
-  private fibUpdateQueue = new Map<string, IRibEntry>();
   private fibStateVector: Map<string, ISvEntry>;
 
   private advNode?: SyncNode;
   private prefixNode?: SyncNode;
   private prefixUpdates: Map<number, IPrefixOps>;
   private prefixTable: Map<string, Set<string>>;
-  private syncInsts: Map<string, SvSync>;
   private advStateVector: Map<string, number>;
 
   constructor(private config: Config) {
     this.advStateVector = new Map();
     this.fibStateVector = new Map();
-    this.syncInsts = new Map();
     this.prefixUpdates = new Map();
     this.prefixTable = new Map();
     this.setup();
@@ -62,22 +59,26 @@ export class DV {
 
       // Create static routes for neighbor advertisement prefixes
       const adv_sync_route = `/${this.config.name}/32=DV/32=ADS`;
-      console.log(`Added route to ${adv_sync_route} via faceid ${link.faceid}`);
       const adv_data_route = `/${link.other_name}/32=DV/32=ADV`;
-      console.log(`Added route to ${adv_data_route} via faceid ${link.faceid}`);
       const prefix_sync_route = `${this.config.sync}/32=DV/32=PFXS`;
-      console.log(
-        `Added route to ${prefix_sync_route} via faceid ${link.faceid}`
-      );
       const prefix_data_route = `/${link.other_name}/32=DV/32=PFX`;
-      console.log(
-        `Added route to ${prefix_data_route} via faceid ${link.faceid}`
-      );
       try {
         await proc.addRoute(adv_sync_route, link.faceid);
+        console.log(
+          `Added route to ${adv_sync_route} via faceid ${link.faceid}`
+        );
         await proc.addRoute(adv_data_route, link.faceid);
+        console.log(
+          `Added route to ${adv_data_route} via faceid ${link.faceid}`
+        );
         await proc.addRoute(prefix_sync_route, link.faceid);
+        console.log(
+          `Added route to ${prefix_sync_route} via faceid ${link.faceid}`
+        );
         await proc.addRoute(prefix_data_route, link.faceid);
+        console.log(
+          `Added route to ${prefix_data_route} via faceid ${link.faceid}`
+        );
       } catch (e) {
         console.error(
           `Failed to add route to ${adv_sync_route} or ${adv_data_route} or ${prefix_sync_route} or ${prefix_data_route}: ${e}`
@@ -91,56 +92,70 @@ export class DV {
   }
 
   async createSyncGroups() {
-    // advertisement sync group
-    await SvSync.create({
-      describe: `/${this.config.name}/32=DV/32=ADS`,
-      syncPrefix: new Name(`/${this.config.name}/32=DV/32=ADS`),
-      steadyTimer: [1000, 0.1],
-      initialize: (svSync: SvSync) => {
-        this.syncInsts.set(this.config.name, svSync);
-        this.advNode = svSync.add(this.config.name); // advNode only publishers
-      },
-    });
-
-    // set adv sync group in NFD to be multicast
-    await proc.setStrategy(
-      `/${this.config.name}/32=DV/32=ADS`,
-      "/localhost/nfd/strategy/multicast"
-    );
-
-    await SvSync.create({
-      // initialize global prefix sync group node
-      describe: `${this.config.sync}/32=DV/32=PFXS`,
-      syncPrefix: new Name(`${this.config.sync}/32=DV/32=PFXS`),
-      steadyTimer: [1000, 0.1],
-      initialize: (svSync: SvSync) => {
-        this.syncInsts.set(this.config.name, svSync);
-        this.prefixNode = svSync.add(this.config.name); // advNode only publishers
-        svSync.addEventListener("update", (update) => {
-          this.handlePrefixSyncUpdate(update);
-        });
-      },
-    });
-
-    // set prefix sync group in NFD to be multicast
-    await proc.setStrategy(
-      `${this.config.sync}/32=DV/32=PFXS`,
-      "/localhost/nfd/strategy/multicast"
-    );
-
-    // join neighbor sync groups
-    for (const link of this.config.links) {
+    try {
+      // advertisement sync group
       await SvSync.create({
-        describe: `/${link.other_name}/32=DV/32=ADS`,
-        syncPrefix: new Name(`/${link.other_name}/32=DV/32=ADS`),
+        describe: `/${this.config.name}/32=DV/32=ADS`,
+        syncPrefix: new Name(`/${this.config.name}/32=DV/32=ADS`),
         steadyTimer: [1000, 0.1],
         initialize: (svSync: SvSync) => {
-          this.syncInsts.set(link.other_name, svSync);
+          this.advNode = svSync.add(this.config.name); // advNode only publishers
+        },
+      });
+      // set adv sync group in NFD to be multicast
+      await proc.setStrategy(
+        `/${this.config.name}/32=DV/32=ADS`,
+        "/localhost/nfd/strategy/multicast"
+      );
+    } catch (e) {
+      console.log(
+        `Error initializing adv sync group /${this.config.name}/32=DV/32=ADS: ${e}`
+      );
+    }
+
+    try {
+      await SvSync.create({
+        // initialize global prefix sync group node
+        describe: `${this.config.sync}/32=DV/32=PFXS`,
+        syncPrefix: new Name(`${this.config.sync}/32=DV/32=PFXS`),
+        steadyTimer: [1000, 0.1],
+        initialize: (svSync: SvSync) => {
+          this.prefixNode = svSync.add(this.config.name); // advNode only publishers
           svSync.addEventListener("update", (update) => {
-            this.handleAdvSyncUpdate(update);
+            this.handlePrefixSyncUpdate(update);
           });
         },
       });
+      // set prefix sync group in NFD to be multicast
+      await proc.setStrategy(
+        `${this.config.sync}/32=DV/32=PFXS`,
+        "/localhost/nfd/strategy/multicast"
+      );
+    } catch (e) {
+      console.log(
+        `Error joining prefix sync group ${this.config.sync}/32=DV/32=PFXS: ${e}`
+      );
+
+      // join neighbor sync groups
+      for (const link of this.config.links) {
+        try {
+          await SvSync.create({
+            describe: `/${link.other_name}/32=DV/32=ADS`,
+            syncPrefix: new Name(`/${link.other_name}/32=DV/32=ADS`),
+            steadyTimer: [1000, 0.1],
+            initialize: (svSync: SvSync) => {
+              svSync.addEventListener("update", (update) => {
+                this.handleAdvSyncUpdate(update);
+              });
+            },
+          });
+        } catch (e) {
+          console.log(
+            `Error joining neighbor sync group /${link.other_name}/32=DV/32=ADS: ${e}`
+          );
+          continue;
+        }
+      }
     }
   }
 
@@ -296,14 +311,14 @@ export class DV {
     }
   }
 
-  // produce an sync update from this router (how to do this?)
+  // produce an sync update from this router
   async produceRIBSyncUpdate() {
     if (this.advNode === undefined) {
       console.warn("[BUG] advNode undefined");
       return;
     }
 
-    this.advNode.seqNum++; // just inc this and that should handle it
+    this.advNode.seqNum++;
     console.log(`DV ${this.config.name}: Published adv update`);
   }
 
