@@ -540,12 +540,10 @@ export class DV {
               }
 
               // remove this route, may be added later
-              // if (nh > 0) {
-              //   await proc.removeRoute(prefix, nh);
-              //   console.log(
-              //     `Removed route to ${prefix} via faceid ${nexthop}`
-              //   );
-              // }
+              if (nh > 0) {
+                await proc.removeRoute(prefix, nh);
+                console.log(`Removed route to ${prefix} via faceid ${nexthop}`);
+              }
 
               delete this.fib[prefix][nh];
               // if prefix is no longer reachable from router, delete from fib
@@ -566,10 +564,10 @@ export class DV {
               if (params.cost >= 16) continue;
               if (nh < 0) continue;
 
-              // if (nh > 0) {
-              //   await proc.addRoute(prefix, nh, params.cost);
-              //   console.log(`Added route to ${prefix} via faceid ${nexthop}`);
-              // }
+              if (nh > 0) {
+                await proc.addRoute(prefix, nh, params.cost);
+                console.log(`Added route to ${prefix} via faceid ${nexthop}`);
+              }
 
               // if fib previously didn't have entry for prefix, add to fib
               this.fib[prefix] ??= {};
