@@ -589,25 +589,23 @@ export class DV {
     if (op === "add") {
       this.fib[prefix] ??= {};
       if (this.rib[router]) {
-        for (const [nexthop, cost] of Object.entries(this.rib[router])) {
+        for (const [nexthop, params] of Object.entries(this.rib[router])) {
           const nh = Number(nexthop);
-          this.fib[prefix][nh] = cost;
-          // if (nh > 0) {
-          //   await proc.addRoute(prefix, nh, params.cost);
-          //   console.log(`Added route to ${prefix} via faceid ${nexthop}`);
-          // }
+          this.fib[prefix][nh] = params;
+          if (nh > 0) {
+            await proc.addRoute(prefix, nh, params.cost);
+            console.log(`Added route to ${prefix} via faceid ${nexthop}`);
+          }
         }
       }
     } else {
       if (this.rib[router]) {
-        for (const [nexthop, cost] of Object.entries(this.rib[router])) {
+        for (const [nexthop, params] of Object.entries(this.rib[router])) {
           const nh = Number(nexthop);
-          // if (nh > 0) {
-          //   await proc.removeRoute(prefix, nh);
-          //   console.log(
-          //     `Removed route to ${prefix} via faceid ${nexthop}`
-          //   );
-          // }
+          if (nh > 0) {
+            await proc.removeRoute(prefix, nh);
+            console.log(`Removed route to ${prefix} via faceid ${nexthop}`);
+          }
         }
       }
       delete this.fib[prefix];

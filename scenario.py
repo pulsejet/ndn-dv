@@ -130,7 +130,7 @@ def start():
 
         # more time for router to converge
         info('Waiting for router to converge\n')
-        time.sleep(60)
+        time.sleep(10)
 
     # calculate scenario variables
     info('Starting Ping on nodes\n')
@@ -158,7 +158,7 @@ def start():
         print('Setting up flow:', flow)
 
         if not DRY:
-            pingss.append(AppManager(ndn, [source], Ping, pfx=f'/{target.name}/ping', logname=target.name))
+            pingss.append(AppManager(ndn, [source], Ping, pfx=f'/{target.name}/32=PING', logname=target.name))
 
     # scenario start
     if not DRY:
