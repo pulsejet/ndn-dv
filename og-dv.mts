@@ -1,7 +1,7 @@
 import { Data, Interest, Name } from "@ndn/packet";
 import { Config, IAdvertisement, ILink, IRibEntry } from "./typings.mjs";
 
-import * as proc from "./proc.js";
+import { Proc as proc } from "./proc.js";
 import { consume, produce } from "@ndn/endpoint";
 import deepEqual from "deep-equal";
 

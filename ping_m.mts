@@ -42,7 +42,6 @@ export default async function main() {
       });
       process.stdout.write(".");
     } catch (e) {
-      console.log(e);
       process.stdout.write("x");
     } finally {
       PC++;
